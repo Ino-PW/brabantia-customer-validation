@@ -21,6 +21,20 @@ df = pd.read_csv(INPUT_PATH)
 # Koopkracht wordt verkeerd ingeladen als string, dus eerst converteren naar numeriek (float)
 df['KOOPKRACHT'] = pd.to_numeric(df['KOOPKRACHT'].str.strip(), errors="coerce")
 
+# Ontbrekende waarden opvullen, anders werkt GMM niet. Hier vullen we op met het gemiddelde van de kolom (voor numerieke kolommen).
+n_missing = df.isna().sum().sum()
+missing_distribution = df.isna().sum()
+
+if n_missing > 0:
+    print(f"Let op: distributie van ontbrekende waarden per kolom:\n{missing_distribution[missing_distribution > 0]}\n")
+    kolommen_met_missing = df.columns[df.isna().any()].tolist()
+    print(f"Let op: {n_missing} ontbrekende waarden gevonden in {kolommen_met_missing}, opgevuld met kolom mediaan.\n")
+else:
+    print("Geen ontbrekende waarden gevonden.\n")
+
+df = df.fillna(df.median(numeric_only=True))
+
+
 # Bewaar een ongewijzigde kopie van de originele tabel om later de labels aan te koppelen
 df_original = df.copy()
 
@@ -47,24 +61,6 @@ def fit_gmm_voor_land(df_land: pd.DataFrame, n_components: int) -> pd.DataFrame:
     df_features = df_land.drop(columns=kolommen_uitsluiten)
     print(f"Features na uitsluiten van {kolommen_uitsluiten}: {df_features.columns.tolist()}\n")
     
-    # # Categorisch vs numeriek
-    # categorical_cols = df_features.select_dtypes(exclude="number").columns.tolist()
-    # numeric_cols = df_features.select_dtypes(include="number").columns.tolist()
-    # print(f"Numerieke kolommen ({len(numeric_cols)}): {numeric_cols}")
-
-    # Ontbrekende waarden opvullen, anders werkt GMM niet. Hier vullen we op met het gemiddelde van de kolom (voor numerieke kolommen).
-    n_missing = df_features.isna().sum().sum()
-    missing_distribution = df_features.isna().sum()
-    
-    if n_missing > 0:
-        print(f"Let op: distributie van ontbrekende waarden per kolom:\n{missing_distribution[missing_distribution > 0]}\n")
-        kolommen_met_missing = df_features.columns[df_features.isna().any()].tolist()
-        print(f"Let op: {n_missing} ontbrekende waarden gevonden in {kolommen_met_missing}, opgevuld met kolomgemiddelde.\n")
-    else:
-        print("Geen ontbrekende waarden gevonden.\n")
-    df_features = df_features.fillna(df_features.mean(numeric_only=True))
-
-
     # Schalen — BELANGRIJK: per land opnieuw fitten, niet globaal,
     # anders vergelijk je landen tegen elkaar in plaats van binnen elkaar te segmenteren
     scaler = StandardScaler()
@@ -77,6 +73,7 @@ def fit_gmm_voor_land(df_land: pd.DataFrame, n_components: int) -> pd.DataFrame:
 
     # GMM fitten
     print(f"GMM trainen met {n_components} componenten...")
+    
     gmm = GaussianMixture(
         n_components=n_components,
         covariance_type="diag",
