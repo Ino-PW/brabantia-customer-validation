@@ -11,6 +11,7 @@ EXCLUDE_TERMS = ["segment"]  # <- kolommen die deze term bevatten worden uitgesl
 N_COMPONENTS = 2
 TOP_N_FEATURES = 15
 LAND_COL = 'prd_country'
+ID_COL = 'master_person_key_md5'
 # -----------------------------------------------
 
 df = pd.read_csv(INPUT_PATH)
@@ -110,5 +111,10 @@ with open(OUTPUT_TXT, "w") as outfile:
 pca_scores_all = pd.concat(all_pca_scores)
 df_with_pca = df.join(pca_scores_all)  # join op index, veiliger dan concat als de rijvolgorde is veranderd
 
-df_with_pca.to_csv(OUTPUT_CSV, index=False)
+# wij willen niet alle kolommen wegschrijven, aangezien het meerendeel al in SAS staat
+pc_cols = list(pca_scores_all.columns)
+keep_cols = [ID_COL] + pc_cols + exclude_cols
+df_output = df_with_pca[keep_cols]
+
+df_output.to_csv(OUTPUT_CSV, index=False)
 print(f"Klaar. Output weggeschreven naar {OUTPUT_CSV} en {OUTPUT_TXT}")
