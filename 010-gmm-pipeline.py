@@ -1,79 +1,54 @@
 """
-Volledige pipeline: tabel -> one-hot encoding -> GMM (tgmm) -> labels terugkoppelen aan originele rijen.
+Stage 010 - GMM segmentation
+============================
+Production fit. Loads the raw consumer table, scales it, fits a Gaussian
+Mixture Model (tgmm) per country using the cluster count you chose in
+config.GMM_N_COMPONENTS (see 005-cluster-selection-pipeline.py), and writes
+the resulting segment labels back onto the original rows.
 
-Benodigde packages installeren (indien nodig):
-    pip install pandas scikit-learn torch tgmm matplotlib
+Run 005 (+ 006 for plots) first and fill in config.GMM_N_COMPONENTS with a
+value per country before trusting this stage's output for production use -
+it will warn per country if it's falling back to GMM_N_COMPONENTS_DEFAULT.
+
+Outputs
+-------
+- results/consumers_{country}.csv                    (one file per country)
+- results/consumers_met_segmenten_per_land.csv        (all countries combined)
+
+Requires: pandas, scikit-learn, torch, tgmm
 """
+
+from __future__ import annotations
 
 import pandas as pd
 import torch
 from sklearn.preprocessing import StandardScaler
 from tgmm import GaussianMixture
 
-# ---------------------------------------------------------------------------
-# 1. DATA INLADEN
-# ---------------------------------------------------------------------------
-INPUT_PATH = "data/amount_of_orders_data.csv"          # <- pas aan naar jouw bestand
-ID_COLS = ["master_person_key_md5"]             # <- kolommen die je NIET wilt modelleren
-N_COMPONENTS = 6                                # <- gewenst aantal segmenten
+import config
+from data_loading import load_and_clean, prepare_features
+from logging_utils import get_logger
 
-df = pd.read_csv(INPUT_PATH)
-# Koopkracht wordt verkeerd ingeladen als string, dus eerst converteren naar numeriek (float)
-df['KOOPKRACHT'] = pd.to_numeric(df['KOOPKRACHT'].str.strip(), errors="coerce")
-
-# Ontbrekende waarden opvullen, anders werkt GMM niet. Hier vullen we op met het gemiddelde van de kolom (voor numerieke kolommen).
-n_missing = df.isna().sum().sum()
-missing_distribution = df.isna().sum()
-
-if n_missing > 0:
-    print(f"Let op: distributie van ontbrekende waarden per kolom:\n{missing_distribution[missing_distribution > 0]}\n")
-    kolommen_met_missing = df.columns[df.isna().any()].tolist()
-    print(f"Let op: {n_missing} ontbrekende waarden gevonden in {kolommen_met_missing}, opgevuld met kolom mediaan.\n")
-else:
-    print("Geen ontbrekende waarden gevonden.\n")
-
-df = df.fillna(df.median(numeric_only=True))
+log = get_logger("010-gmm")
 
 
-# Bewaar een ongewijzigde kopie van de originele tabel om later de labels aan te koppelen
-df_original = df.copy()
+def fit_gmm_for_country(df_country: pd.DataFrame, n_components: int) -> pd.DataFrame:
+    """Fit a GMM on the rows of a single country and return labels/probabilities attached."""
+    df_features = prepare_features(df_country)
+    log.info("Features: %s", df_features.columns.tolist())
 
-print(f"Data ingeladen: {len(df)} rijen, {len(df.columns)} kolommen.")
-print(f"Kolommen: {df.columns.tolist()}\n")
-
-
-LANDEN = [ "NL", "BE", "FR", "DE", "GB","ES"]
-
-
-# ---------------------------------------------------------------------------
-# 2. FUNCTIE OM ÉÉN LAND TE VERWERKEN EN TE FITTEN
-# ---------------------------------------------------------------------------
-def fit_gmm_voor_land(df_land: pd.DataFrame, n_components: int) -> pd.DataFrame:
-    """Fit een GMM op de rijen van één land en geef een df terug met labels/kansen."""
-
-    # Categorisch vs numeriek
-    categorical_cols = df_land.select_dtypes(exclude="number").columns.tolist()
-    numeric_cols = df_land.select_dtypes(include="number").columns.tolist()
-    print(f"Numerieke kolommen ({len(numeric_cols)}): {numeric_cols}")
-
-    # Kolommen die niet gemodelleerd worden (ID + land zelf, want die is nu constant)
-    kolommen_uitsluiten = ID_COLS + ['prd_country', 'order_number_functional_all'] + categorical_cols
-    df_features = df_land.drop(columns=kolommen_uitsluiten)
-    print(f"Features na uitsluiten van {kolommen_uitsluiten}: {df_features.columns.tolist()}\n")
-    
-    # Schalen — BELANGRIJK: per land opnieuw fitten, niet globaal,
-    # anders vergelijk je landen tegen elkaar in plaats van binnen elkaar te segmenteren
+    # Scaler is fit PER COUNTRY on purpose: comparing scaled values across
+    # countries would compare countries against each other rather than
+    # segmenting consumers within each country.
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df_features.values)
-    print(f"Features geschaald (StandardScaler), vorm: {X_scaled.shape}.\n")
+    x_scaled = scaler.fit_transform(df_features.values)
+    log.info("Features scaled with StandardScaler, shape: %s", x_scaled.shape)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    X_tensor = torch.tensor(X_scaled, dtype=torch.float32, device=device)
-    print(f"Tensor aangemaakt op device: {device}.\n")
+    x_tensor = torch.tensor(x_scaled, dtype=torch.float32, device=device)
+    log.info("Tensor created on device: %s", device)
 
-    # GMM fitten
-    print(f"GMM trainen met {n_components} componenten...")
-    
+    log.info("Training GMM with %d components...", n_components)
     gmm = GaussianMixture(
         n_components=n_components,
         covariance_type="diag",
@@ -82,79 +57,63 @@ def fit_gmm_voor_land(df_land: pd.DataFrame, n_components: int) -> pd.DataFrame:
         random_state=0,
         reg_covar=1e-4,
     )
+    gmm.fit(x_tensor)
+    log.info("GMM training complete.")
 
-    gmm.fit(X_tensor)
-    print("GMM getraind.")
-    labels = gmm.predict(X_tensor).cpu().numpy()
-    probs = gmm.predict_proba(X_tensor).cpu().numpy()
+    labels = gmm.predict(x_tensor).cpu().numpy()
+    probs = gmm.predict_proba(x_tensor).cpu().numpy()
 
-    # Resultaten terugkoppelen aan de originele rijen van dit land
-    df_result_land = df_land.copy()
-    df_result_land["segment"] = labels
+    df_result = df_country.copy()
+    df_result["segment"] = labels
 
     prob_cols = [f"segment_{i}_kans" for i in range(n_components)]
-    df_result_land[prob_cols] = probs
-    print(f"Segmentverdeling: {pd.Series(labels).value_counts().to_dict()}")
+    df_result[prob_cols] = probs
 
-    return df_result_land
-
-
-# ---------------------------------------------------------------------------
-# 3. PER LAND LOOPEN — RESULTATEN OPSLAAN IN EEN DICT (1 DF PER LAND)
-# ---------------------------------------------------------------------------
-dfs_per_land = {}   # <- hier krijgt elk land zijn eigen df, bv. dfs_per_land["NL"]
-
-for land in LANDEN:
-    print(f"\n{20*'='} Verwerken van {land} {20*'='}")
-    df_land = df[df['prd_country'] == land]
- 
-    if df_land.empty:
-        print(f"Let op: geen rijen gevonden voor {land}, wordt overgeslagen.")
-        continue
- 
-    print(f"{len(df_land)} rijen gevonden voor {land}.")
-    dfs_per_land[land] = fit_gmm_voor_land(df_land, N_COMPONENTS)
-    print(f"Klaar met {land}.")
+    log.info("Segment distribution: %s", pd.Series(labels).value_counts().to_dict())
+    return df_result
 
 
-# Nu heb je losse dataframes, elk met hun eigen GMM-resultaten:
-#   dfs_per_land["NL"]
-#   dfs_per_land["BE"]
-#   dfs_per_land["FR"]
-#   dfs_per_land["DE"]
-#   dfs_per_land["UK"]
-#   dfs_per_land["ES"]
+def run(landen: list[str] | None = None) -> dict[str, pd.DataFrame]:
+    landen = landen if landen is not None else config.LANDEN
 
-print(f"\nAlle landen verwerkt: {list(dfs_per_land.keys())}")
-# Los opslaan per land, bijvoorbeeld:
-print("\nWegschrijven van losse CSV's per land...")
-for land, df_land_resultaat in dfs_per_land.items():
-    bestandsnaam = f"results/consumers_{land}.csv"
-    df_land_resultaat.to_csv(bestandsnaam, index=False)
-    print(f"  {bestandsnaam} opgeslagen ({len(df_land_resultaat)} rijen).")
+    df = load_and_clean(config.GMM_INPUT_PATH)
+    log.info("Data loaded: %d rows, %d columns.", len(df), len(df.columns))
+
+    dfs_per_country: dict[str, pd.DataFrame] = {}
+    for country in landen:
+        n_components = config.get_n_components(country)
+        log.info("=== Processing %s (n_components=%d) ===", country, n_components)
+        df_country = df[df[config.COUNTRY_COL] == country]
+
+        if df_country.empty:
+            log.warning("No rows found for %s, skipping.", country)
+            continue
+
+        log.info("%d rows found for %s.", len(df_country), country)
+        dfs_per_country[country] = fit_gmm_for_country(df_country, n_components)
+
+    if not dfs_per_country:
+        raise RuntimeError("No countries were processed - check the input data and config.LANDEN.")
+
+    log.info("All countries processed: %s", list(dfs_per_country.keys()))
+
+    for country, df_result in dfs_per_country.items():
+        out_path = config.GMM_PER_COUNTRY_TEMPLATE.format(country=country)
+        df_result.to_csv(out_path, index=False)
+        log.info("Saved %s (%d rows).", out_path, len(df_result))
+
+    df_total = pd.concat(dfs_per_country.values(), axis=0).sort_index()
+    # "segment" is only unique WITHIN a country; add a globally unique id.
+    df_total["segment_globaal"] = df_total[config.COUNTRY_COL] + "_" + df_total["segment"].astype(str)
+
+    df_total.to_csv(config.GMM_COMBINED_OUTPUT, index=False)
+    log.info("Saved combined output to %s (%d rows).", config.GMM_COMBINED_OUTPUT, len(df_total))
+
+    for country, df_result in dfs_per_country.items():
+        log.info("--- %s (%d rows total) ---\n%s", country, len(df_result), df_result["segment"].value_counts())
+
+    return dfs_per_country
 
 
-# ---------------------------------------------------------------------------
-# 4. (OPTIONEEL) ALLE LANDEN SAMEN BEKIJKEN IN ÉÉN DF
-# ---------------------------------------------------------------------------
-# Handig voor een totaaloverzicht — de losse dfs in dfs_per_land blijven
-# gewoon beschikbaar, dit is puur een extra gecombineerde versie ernaast.
-print("\nAlle landen samenvoegen tot één totaaloverzicht...")
-df_totaal = pd.concat(dfs_per_land.values(), axis=0).sort_index()
-print(f"Totaaldataframe: {len(df_totaal)} rijen, {len(df_totaal.columns)} kolommen.")
- 
-# "segment" is alleen uniek BINNEN een land (NL-segment 0 ≠ BE-segment 0),
-# daarom een aparte kolom met een landgebonden, globaal unieke segmentnaam:
-df_totaal["segment_globaal"] = df_totaal['prd_country'] + "_" + df_totaal["segment"].astype(str)
-print("Kolom 'segment_globaal' toegevoegd (land + segment, uniek over alle landen).")
- 
-df_totaal.to_csv("results/consumers_met_segmenten_per_land.csv", index=False)
-print("consumers_met_segmenten_per_land.csv opgeslagen.")
- 
-# ---------------------------------------------------------------------------
-# 5. INSPECTEREN
-# ---------------------------------------------------------------------------
-print("\n{20*'='} Overzicht segmentverdeling per land {20*'='}")
-for land, df_land_resultaat in dfs_per_land.items():
-    print(f"\n--- {land} ({len(df_land_resultaat)} rijen totaal) ---")
-    print(df_land_resultaat["segment"].value_counts())
+if __name__ == "__main__":
+    run()
