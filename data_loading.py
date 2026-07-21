@@ -35,18 +35,28 @@ def load_and_clean(input_path: Path) -> pd.DataFrame:
     n_missing = int(df.isna().sum().sum())
     if n_missing > 0:
         missing_distribution = df.isna().sum()
-        cols_with_missing = df.columns[df.isna().any()].tolist()
+        numeric_cols_with_missing = df.select_dtypes(include="number").columns[
+            df.select_dtypes(include="number").isna().any()
+        ].tolist()
+        non_numeric_cols_with_missing = [
+            c for c in df.columns[df.isna().any()].tolist() if c not in numeric_cols_with_missing
+        ]
         log.warning(
-            "Found %d missing values in columns %s; imputing with the column median.",
+            "Found %d missing values. Imputing numeric columns %s with the per-country median.",
             n_missing,
-            cols_with_missing,
+            numeric_cols_with_missing,
         )
+        if non_numeric_cols_with_missing:
+            log.warning(
+                "Non-numeric columns %s have missing values but will NOT be imputed.",
+                non_numeric_cols_with_missing,
+            )
         log.debug("Missing-value distribution:\n%s", missing_distribution[missing_distribution > 0])
 
-        # NOTE: this fills with the GLOBAL median across all countries. If
-        # country distributions differ a lot, consider imputing per-country
-        # instead (df.groupby(config.COUNTRY_COL).transform(...)).
-        df = df.fillna(df.median(numeric_only=True))
+    
+        # NOTE: this fills with the median per country. 
+        numeric_cols = df.select_dtypes(include="number").columns
+        df[numeric_cols] = df.groupby(config.COUNTRY_COL)[numeric_cols].transform(lambda s: s.fillna(s.median()))
     else:
         log.info("No missing values found.")
 
