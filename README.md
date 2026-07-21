@@ -115,7 +115,7 @@ Dit draait:
    en fit per land een GMM voor elk aantal clusters tussen
    `config.CLUSTER_SELECTION_K_MIN` en `config.CLUSTER_SELECTION_K_MAX`
    (standaard 2 t/m 10). Elke fit wordt gescoord met de silhouette-score, en
-   met BIC/AIC als `tgmm`'s `GaussianMixture` die methodes aanbiedt.
+   met BIC/AIC.
 2. **`006-visualise-cluster-selection-pipeline.py`** — leest die resultaten
    en tekent per land een elleboog-plot (silhouette-score tegen aantal
    clusters).
@@ -204,8 +204,7 @@ kunnen lopen:
 
 - **`load_and_clean(input_path)`** — leest de ruwe CSV in, zet de kolom
   `KOOPKRACHT` om van tekst naar numeriek, en vult ontbrekende waarden op
-  met de **kolommediaan** (over alle landen heen, vóór de opsplitsing per
-  land — zie [Bekende ontwerpkeuzes](#bekende-ontwerpkeuzes-en-beperkingen)).
+  met de **kolommediaan** van het bijpassende land — zie [Bekende ontwerpkeuzes](#bekende-ontwerpkeuzes-en-beperkingen)).
 - **`prepare_features(df_land)`** — verwijdert ID-, land-, categorische en
   segment-gerelateerde kolommen, zodat alleen echte modelfeatures overblijven.
 
@@ -213,9 +212,9 @@ kunnen lopen:
 
 - **Input:** ruwe data via `load_and_clean`.
 - **Werking:** per land, per `k` in het geconfigureerde bereik, een GMM
-  fitten en scoren met silhouette (en BIC/AIC indien beschikbaar).
+  fitten en scoren met silhouette (en BIC/AIC).
 - **Output:** `results/cluster_selection.csv` met kolommen
-  `land`, `n_clusters`, `silhouette_score`, en optioneel `bic`/`aic`.
+  `land`, `n_clusters`, `silhouette_score`, en `bic`/`aic`.
 - **Let op:** dit script fit meerdere modellen per land (standaard 9, voor
   k=2 t/m 10) en kan daardoor merkbaar langer duren dan de productie-fit
   (stap `010`, die maar één `k` fit).
@@ -249,10 +248,7 @@ kunnen lopen:
 - **Werking:** berekent per land clusterstatistieken (grootte per cluster,
   beschrijvende statistieken per feature, silhouette per cluster, en
   overall silhouette/Calinski-Harabasz/Davies-Bouldin) op de numerieke
-  kolommen (exclusief kolommen die `EXCLUDE_TERMS` bevatten). Deze helpers
-  stonden voorheen in een aparte `utils.py` die niet bij dit pakket zat -
-  ze zijn nu direct in dit bestand gedefinieerd, dus `020` heeft geen
-  externe dependency meer en draait out of the box.
+  kolommen (exclusief kolommen die `EXCLUDE_TERMS` bevatten).
 - **Output:** `results/stats.csv`, met een kolom `land` erbij.
 
 ### `030-pca-pipeline.py`
@@ -334,11 +330,8 @@ Deze punten zijn bewuste keuzes of bekende beperkingen — geen bugs, maar
 wel dingen om in gedachten te houden:
 
 - **Globale mediaan-imputatie.** Ontbrekende waarden worden opgevuld met de
-  mediaan over *alle* landen samen, vóór de opsplitsing per land. Verschillen
-  de verdelingen sterk per land, dan kan dit een lichte vertekening geven
-  voor kleinere landen. Wil je dit per land doen, pas dan
-  `load_and_clean()` in `data_loading.py` aan (bijvoorbeeld met
-  `df.groupby(config.COUNTRY_COL).transform(...)`).
+  mediaan over *alle* landen los, vóór de opsplitsing per land. Wil je dit voor alle landen samen doen, pas dan
+  `load_and_clean()` in `data_loading.py` aan.
 - **`n_init` verschilt tussen fase 1 en fase 2.** De verkennende sweep
   (`005`) gebruikt `CLUSTER_SELECTION_N_INIT = 5` in plaats van de 10
   herstarts die de productie-fit (`010`) gebruikt, puur om de sweep
@@ -350,11 +343,6 @@ wel dingen om in gedachten te houden:
   hoeveel rijen worden meegenomen in de silhouette-berekening, omdat deze
   metric kwadratisch schaalt met het aantal rijen. Zet op `None` voor een
   exacte berekening op alle rijen (kan traag zijn bij grote landen).
-- **BIC/AIC zijn optioneel.** Deze worden alleen toegevoegd aan
-  `cluster_selection.csv` als `tgmm`'s `GaussianMixture`-klasse `.bic()`
-  en/of `.aic()` methodes aanbiedt. Is dat niet het geval, dan ontbreken die
-  kolommen simpelweg en kun je varen op de silhouette-score.
-
 ---
 
 ## Veelvoorkomende problemen
