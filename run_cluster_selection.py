@@ -51,17 +51,24 @@ def main() -> None:
 
     cluster_selection = _load_stage("005-cluster-selection-pipeline.py")
     visualise = _load_stage("006-visualise-cluster-selection-pipeline.py")
+    update_config = _load_stage("007-update-config-from-cluster-selection.py")
 
-    log.info("=== Stage 1/2: Cluster count selection (k=%d..%d) ===",
-              config.CLUSTER_SELECTION_K_MIN, config.CLUSTER_SELECTION_K_MAX)
-    cluster_selection.run(landen=LANDEN)
+    log.info("=== Stage 1/3: Cluster count selection (k=%d..%d) ===",
+             config.CLUSTER_SELECTION_K_MIN, config.CLUSTER_SELECTION_K_MAX)
+    cluster_selection.run(landen=LANDEN, covariance = config.COVARIANCE_TYPE)
 
-    log.info("=== Stage 2/2: Plot cluster count selection ===")
+    log.info("=== Stage 2/3: Plot cluster count selection ===")
     visualise.run(landen=LANDEN)
 
     log.info("Done. Review results/figures/cluster_selection_*.png and "
               "results/cluster_selection.csv, then edit the GMM_N_COMPONENTS "
               "dict in config.py before running: python run_pipeline.py")
+    
+    log.info("=== Stage 3/3: Update GMM configuration ===")
+    update_config.run()
+
+    log.info("Updated GMM configuration saved to gmm_n_components.json. Please review and update config.py accordingly.")
+
 
 
 if __name__ == "__main__":

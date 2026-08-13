@@ -4,9 +4,15 @@ run_pipeline.py
 Entry point 2 of 2. The full PRODUCTION pipeline:
 
     010-gmm-pipeline.py   -> GMM segmentation per country, using
-                              config.GMM_N_COMPONENTS[country]
+                              config.GMM_N_COMPONENTS[country], plus PCA
+                              reporting (consumers_met_pca.csv, PCA.txt) -
+                              this used to be a separate 030-pca-pipeline.py
+                              stage that re-fit its own PCA from scratch on
+                              010's output; it's now folded into 010 so
+                              there's a single PCA fit per country, used for
+                              both clustering and reporting. 030 is no
+                              longer part of this pipeline.
     020-stats-pipeline.py -> cluster statistics per country
-    030-pca-pipeline.py   -> PCA per country
 
 Run run_cluster_selection.py FIRST if you haven't already chosen a cluster
 count per country - this script does not sweep or validate k, it trusts
@@ -68,16 +74,12 @@ def main() -> None:
 
     gmm = _load_stage("010-gmm-pipeline.py")
     stats = _load_stage("020-stats-pipeline.py")
-    pca = _load_stage("030-pca-pipeline.py")
 
-    log.info("=== Stage 1/3: GMM segmentation ===")
-    gmm.run(landen=LANDEN)
+    log.info("=== Stage 1/2: GMM segmentation + PCA reporting ===")
+    gmm.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS)
 
-    log.info("=== Stage 2/3: Cluster statistics ===")
+    log.info("=== Stage 2/2: Cluster statistics ===")
     stats.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS)
-
-    log.info("=== Stage 3/3: PCA ===")
-    pca.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS)
 
     log.info("Pipeline complete.")
 
