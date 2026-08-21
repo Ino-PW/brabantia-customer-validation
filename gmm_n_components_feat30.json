@@ -2,12 +2,12 @@
     "BE": {
         "n_clusters": 3,
         "best_init_setup": 2,
-        "covariance_type": "tied_diag"
+        "covariance_type": "tied_spherical"
     },
     "DE": {
-        "n_clusters": 7,
+        "n_clusters": 3,
         "best_init_setup": 0,
-        "covariance_type": "tied_spherical"
+        "covariance_type": "tied_diag"
     },
     "ES": {
         "n_clusters": 3,
@@ -21,12 +21,12 @@
     },
     "GB": {
         "n_clusters": 3,
-        "best_init_setup": 4,
+        "best_init_setup": 1,
         "covariance_type": "tied_diag"
     },
     "NL": {
-        "n_clusters": 5,
-        "best_init_setup": 2,
+        "n_clusters": 3,
+        "best_init_setup": 0,
         "covariance_type": "tied_diag"
     }
 }

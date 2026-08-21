@@ -99,31 +99,66 @@ def _evaluate_k(x_tensor, x_scaled, k: int, covariance_type) -> dict:
     return result
 
 
-def run(landen: list[str], covariance: list[str]) -> pd.DataFrame:
+def run(landen: list[str], covariance: list[str], combine_countries: bool = False) -> pd.DataFrame:
+    """
+    Parameters
+    ----------
+    landen : list[str]
+        Countries to include. Defaults to config.LANDEN when None.
+    covariance : list[str]
+        Covariance types to sweep (e.g. from config.COVARIANCE_TYPE).
+    combine_countries : bool, default False
+        - False (default, original behaviour): loop over `landen` and fit a
+          separate GMM sweep PER country - i.e. each country gets its own
+          PCA and its own k=K_MIN..K_MAX silhouette/BIC/AIC curve.
+        - True: pool all rows from every country in `landen` into a single
+          dataset and run ONE PCA + ONE k-sweep across all of them combined.
+          Useful when you want a single cross-country segmentation instead
+          of per-country segments. The resulting rows in
+          results/cluster_selection.csv and the PCA outputs are labelled
+          with the joined country codes (e.g. "DE+FR+NL") instead of a
+          single country, and the original per-row country is preserved in
+          a `config.COUNTRY_COL` column in the PCA scores output so you can
+          still inspect cluster composition by country afterwards.
+    """
     landen = landen if landen is not None else config.LANDEN
 
     df = load_and_clean(config.GMM_INPUT_PATH)
     log.info("Data loaded: %d rows, %d columns.", len(df), len(df.columns))
 
+    # Each "group" is (label_used_for_output_rows, list_of_country_codes_in_it).
+    # Default mode: one group per country. Combined mode: a single group
+    # containing every country in `landen`, labelled by joining their codes.
+    if combine_countries:
+        groups = [("+".join(sorted(landen)), list(landen))]
+    else:
+        groups = [(country, [country]) for country in landen]
+
     all_rows = []
     all_pca_scores = []
     all_pca_loadings = []
     for covariance_type in covariance:
-        for country in landen:
+        for group_label, countries_in_group in groups:
+
             log.info(f"Running with the following Covariance: '{covariance_type}' out of the possible {config.COVARIANCE_TYPE}")
-        
-            df_country = df[df[config.COUNTRY_COL] == country]
+
+            df_country = df[df[config.COUNTRY_COL].isin(countries_in_group)]
 
             if df_country.empty:
-                log.warning("No rows found for %s, skipping.", country)
+                log.warning("No rows found for %s, skipping.", group_label)
                 continue
 
             df_features = prepare_features(df_country)
             log.info(
                 "=== %s: sweeping k=%d..%d over %d rows, %d features ===",
-                country, config.CLUSTER_SELECTION_K_MIN, config.CLUSTER_SELECTION_K_MAX,
+                group_label, config.CLUSTER_SELECTION_K_MIN, config.CLUSTER_SELECTION_K_MAX,
                 len(df_features), df_features.shape[1],
             )
+            if combine_countries:
+                log.info(
+                    "=== %s: combined mode - %d countries pooled into one fit (%s) ===",
+                    group_label, len(countries_in_group), ", ".join(countries_in_group),
+                )
 
             scaler = StandardScaler()
             numeric_scaled = pd.DataFrame(
@@ -136,13 +171,13 @@ def run(landen: list[str], covariance: list[str]) -> pd.DataFrame:
                 pca = PCA(n_components = len(df_features.columns))
                 log.info(
                     "=== %s: config.PCA_N_COMPONENTS = %d and is >= 1 or None, so PCA will keep all features ===",
-                    country, config.PCA_N_COMPONENTS
+                    group_label, config.PCA_N_COMPONENTS
                 )
             elif config.PCA_N_COMPONENTS < 1:
                 pca = PCA(n_components = config.PCA_N_COMPONENTS)
                 log.info(
                     "=== %s: config.PCA_N_COMPONENTS = %d and is < 1, so PCA will keep only the specified number of components ===",
-                    country, config.PCA_N_COMPONENTS
+                    group_label, config.PCA_N_COMPONENTS
                 )
                 
             pca_scores = pca.fit_transform(numeric_scaled)
@@ -152,13 +187,17 @@ def run(landen: list[str], covariance: list[str]) -> pd.DataFrame:
                 columns=[f"PC{i + 1}" for i in range(pca.n_components_)],
                 index=numeric_scaled.index,
             )
-            pca_df[config.LAND_COL] = country
+            pca_df[config.LAND_COL] = group_label
             pca_df[config.COVARIANCE] = covariance_type
+            if combine_countries:
+                # Preserve which actual country each pooled row came from,
+                # since config.LAND_COL now holds the combined group label.
+                pca_df[config.COUNTRY_COL] = df_country.loc[numeric_scaled.index, config.COUNTRY_COL].values
             all_pca_scores.append(pca_df)
 
             log.info(
                 "%s: PCA reduced %d features to %d components (%.1f%% variance explained).",
-                country, numeric_scaled.shape[1], pca.n_components_,
+                group_label, numeric_scaled.shape[1], pca.n_components_,
                 100 * pca.explained_variance_ratio_.sum(),
             )
 
@@ -171,7 +210,7 @@ def run(landen: list[str], covariance: list[str]) -> pd.DataFrame:
                 columns=[f"PC{i + 1}" for i in range(pca.n_components_)],
                 index=numeric_scaled.columns,
             )
-            loadings_df[config.LAND_COL] = country
+            loadings_df[config.LAND_COL] = group_label
             loadings_df[config.COVARIANCE] = covariance_type
             loadings_df["feature"] = loadings_df.index
             for i in range(pca.n_components_):
@@ -189,16 +228,16 @@ def run(landen: list[str], covariance: list[str]) -> pd.DataFrame:
             for k in range(config.CLUSTER_SELECTION_K_MIN, config.CLUSTER_SELECTION_K_MAX + 1):
                 try:
                     if len(df_features) <= k:
-                        log.warning("Skipping k=%d for %s: fewer rows (%d) than clusters.", k, country, len(df_features))
+                        log.warning("Skipping k=%d for %s: fewer rows (%d) than clusters.", k, group_label, len(df_features))
                         continue
 
-                    log.info("%s: fitting k=%d...", country, k)
+                    log.info("%s: fitting k=%d...", group_label, k)
                     row = _evaluate_k(x_tensor, x_scaled, k, covariance_type)
-                    row[config.LAND_COL] = country
+                    row[config.LAND_COL] = group_label
                     all_rows.append(row)
 
                 except Exception as e:
-                    log.warning(f"{country} in cluster {k} with covariance type {covariance_type} led to {e}") 
+                    log.warning(f"{group_label} in cluster {k} with covariance type {covariance_type} led to {e}") 
 
     results_df = pd.DataFrame(all_rows)
     results_df.to_csv(config.CLUSTER_SELECTION_OUTPUT, index=False)
@@ -247,4 +286,17 @@ def _log_recommendations(results_df: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--combine-countries",
+        action="store_true",
+        help=(
+            "Pool all countries in config.LANDEN into a single k-sweep "
+            "instead of running one sweep per country."
+        ),
+    )
+    args = parser.parse_args()
+
+    run(config.LANDEN, config.COVARIANCE_TYPE, combine_countries=args.combine_countries)
