@@ -200,7 +200,7 @@ def main() -> None:
     gmm.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS, combine_countries=_args.combine_countries)
 
     log.info("=== Stage 2/2 (feat%s): Cluster statistics ===", config.FEATURE_SET)
-    stats.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS)
+    stats.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS, combine_countries=_args.combine_countries)
 
     log.info("Pipeline complete for FEATURE_SET=%s.", config.FEATURE_SET)
 

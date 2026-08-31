@@ -1,4 +1,4 @@
-def run():
+def run(combine_countries=False):
     import os
     import glob
     import re
@@ -73,7 +73,11 @@ def run():
         # config instead of overwriting the others. config.py loads
         # gmm_n_components_<FEATURE_TAG>.json automatically based on the
         # active FEATURE_SET env var.
-        out_filename = "gmm_n_components.json" if tag == "untagged" else f"gmm_n_components_{tag}.json"
+        if combine_countries:
+            out_filename = f"gmm_n_components_combined_{tag}.json"
+        else:
+            out_filename = "gmm_n_components.json" if tag == "untagged" else f"gmm_n_components_{tag}.json"
+
         with open(out_filename, 'w') as f:
             json.dump(formatted_config, f, indent=4)
 
@@ -85,4 +89,16 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--combine-countries",
+        action="store_true",
+        help=(
+            "Pool all countries in config.LANDEN into a single k-sweep "
+            "instead of running one sweep per country."
+        ),
+    )
+    args = parser.parse_args()
+    run(combine_countries=args.combine_countries)

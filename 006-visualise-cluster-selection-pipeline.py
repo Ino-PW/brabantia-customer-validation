@@ -173,4 +173,15 @@ def run(landen: list[str], visualise_path: Path | None = None, combine_countries
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Stage 006 - Visualise cluster count selection")
+    parser.add_argument("--visualise-path", type=Path, default=None)
+    parser.add_argument("--combine-countries", action="store_true", default=False)
+    args = parser.parse_args()
+
+    run(
+        landen=config.LANDEN,
+        visualise_path=args.visualise_path,
+        combine_countries=args.combine_countries,
+    )

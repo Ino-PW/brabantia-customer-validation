@@ -19,7 +19,8 @@ stage that ever used them, so nothing is lost by inlining them here.
 
 Output
 ------
-- results/stats.csv
+- results/stats.csv          (per-country mode, default)
+- results/stats_combined.csv (combine_countries=True)
 
 Requires: pandas, numpy, scikit-learn
 """
@@ -150,48 +151,160 @@ def flatten_cluster_statistics(results: dict) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
+
+def _load_country(country: str) -> pd.DataFrame | None:
+    """Load a single country's segmented CSV. Returns None if not found."""
+    input_path = config.GMM_PER_COUNTRY_TEMPLATE.format(country=country)
+    try:
+        df = pd.read_csv(input_path)
+        df[config.LAND_COL] = country  # ensure the country column is present
+        return df
+    except FileNotFoundError:
+        log.warning(
+            "No file found for %s at %s, skipping "
+            "(did stage 010 run for this country?).",
+            country,
+            input_path,
+        )
+        return None
+
+
+def _resolve_feature_cols(df: pd.DataFrame, exclude_terms: list[str]) -> list[str]:
+    """Return numeric columns that don't match any exclude term."""
+    exclude_cols = [c for c in df.columns if any(term in c.lower() for term in exclude_terms)]
+    log.info("Excluded from statistics (%d columns): %s", len(exclude_cols), exclude_cols)
+    return (
+        df.select_dtypes(include="number")
+        .drop(columns=exclude_cols, errors="ignore")
+        .columns.tolist()
+    )
+
+
+# --------------------------------------------------------------------------
 # Stage entry point
 # --------------------------------------------------------------------------
 
-def run(landen: list[str] | None = None, exclude_terms: list[str] | None = None) -> pd.DataFrame:
+def run(
+    landen: list[str] | None = None,
+    exclude_terms: list[str] | None = None,
+    combine_countries: bool = False,
+) -> pd.DataFrame:
+    """
+    Parameters
+    ----------
+    landen : list[str] | None
+        Countries to process. Defaults to ``config.LANDEN``.
+    exclude_terms : list[str] | None
+        Column-name substrings to exclude from feature columns.
+        Defaults to ``config.EXCLUDE_TERMS``.
+    combine_countries : bool, default False
+        When *False* (default) statistics are computed independently for each
+        country and the ``config.LAND_COL`` column identifies the source.
+
+        When *True* all country files are concatenated first and statistics
+        are computed on the combined dataset as a whole.  The cluster label
+        column (``config.SEGMENT_COL``) is used as-is, so this mode assumes
+        clusters are comparable across countries (e.g. they were produced by
+        a single cross-country GMM run, or cluster IDs were harmonised
+        beforehand).  The ``config.LAND_COL`` column is *not* added in this
+        mode because the result represents all countries jointly.  Output is
+        written to ``config.STATS_COMBINED_OUTPUT`` instead of
+        ``config.STATS_OUTPUT``.
+    """
     landen = landen if landen is not None else config.LANDEN
     exclude_terms = exclude_terms if exclude_terms is not None else config.EXCLUDE_TERMS
 
-    all_results = []
-
+    # ------------------------------------------------------------------ #
+    # Load all requested country files                                    #
+    # ------------------------------------------------------------------ #
+    country_dfs: list[pd.DataFrame] = []
     for country in landen:
-        log.info("Processing %s", country)
-        input_path = config.GMM_PER_COUNTRY_TEMPLATE.format(country=country)
+        log.info("Loading %s", country)
+        df = _load_country(country)
+        if df is not None:
+            country_dfs.append(df)
 
-        try:
-            df = pd.read_csv(input_path)
-        except FileNotFoundError:
-            log.warning("No file found for %s at %s, skipping (did stage 010 run for this country?).", country, input_path)
-            continue
+    if not country_dfs:
+        raise RuntimeError(
+            "No country files were processed - check that stage 010 ran successfully."
+        )
 
-        exclude_cols = [c for c in df.columns if any(term in c.lower() for term in exclude_terms)]
-        log.info("Excluded from statistics (%d columns): %s", len(exclude_cols), exclude_cols)
+    # ------------------------------------------------------------------ #
+    # Combined-countries mode                                             #
+    # ------------------------------------------------------------------ #
+    if combine_countries:
+        log.info("combine_countries=True: pooling %d country files.", len(country_dfs))
+        combined_df = pd.concat(country_dfs, ignore_index=True)
 
-        numeric_cols = df.select_dtypes(include="number").drop(columns=exclude_cols, errors="ignore").columns.tolist()
+        # Exclude the country-identifier column itself from numeric features
+        extra_exclude = [config.LAND_COL]
+        all_exclude_terms = list(exclude_terms) + [t.lower() for t in extra_exclude]
+        feature_cols = _resolve_feature_cols(combined_df, all_exclude_terms)
 
-        results = compute_cluster_statistics(df, numeric_cols, config.SEGMENT_COL)
-        results_df = flatten_cluster_statistics(results)
-        results_df[config.LAND_COL] = country
-        all_results.append(results_df)
+        results = compute_cluster_statistics(combined_df, feature_cols, config.SEGMENT_COL)
+        statistics_df = flatten_cluster_statistics(results)
 
-        log.info("Finished %s", country)
+        # Record which countries contributed and how many rows each added
+        country_counts = (
+            combined_df[config.LAND_COL].value_counts().sort_index().to_dict()
+        )
+        group_label = "+".join(sorted(landen))
+        statistics_df["source_countries"] = group_label
+        statistics_df["n_countries"] = len(country_dfs)
+        log.info(
+            "Combined dataset: %d rows from %d countries: %s",
+            len(combined_df),
+            len(country_dfs),
+            country_counts,
+        )
 
-    if not all_results:
-        raise RuntimeError("No country files were processed - check that stage 010 ran successfully.")
+        output_path = config.STATS_COMBINED_OUTPUT
+        statistics_df.to_csv(output_path, index=False)
+        log.info("Saved %s", output_path)
+        return statistics_df
+    
+    else:
+        log.info("combine_countries=False: computing statistics per country.")
+        # ------------------------------------------------------------------ #
+        # Per-country mode (original behaviour)                               #
+        # ------------------------------------------------------------------ #
+        all_results = []
+        for df in country_dfs:
+            country = df[config.LAND_COL].iloc[0]
+            log.info("Processing %s", country)
 
-    statistics_df = pd.concat(all_results, ignore_index=True)
-    log.info("Combined statistics: %d rows.", len(statistics_df))
+            feature_cols = _resolve_feature_cols(df, exclude_terms)
 
-    statistics_df.to_csv(config.STATS_OUTPUT, index=False)
-    log.info("Saved %s", config.STATS_OUTPUT)
+            results = compute_cluster_statistics(df, feature_cols, config.SEGMENT_COL)
+            results_df = flatten_cluster_statistics(results)
+            results_df[config.LAND_COL] = country
+            all_results.append(results_df)
 
-    return statistics_df
+            log.info("Finished %s", country)
+
+        statistics_df = pd.concat(all_results, ignore_index=True)
+        log.info("Combined statistics: %d rows.", len(statistics_df))
+
+        statistics_df.to_csv(config.STATS_OUTPUT, index=False)
+        log.info("Saved %s", config.STATS_OUTPUT)
+
+        return statistics_df
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Stage 020 - Cluster statistics")
+    parser.add_argument(
+        "--combine-countries",
+        action="store_true",
+        default=False,
+        help=(
+            "Pool all country files into one dataset before computing statistics "
+            "(writes to config.STATS_COMBINED_OUTPUT instead of config.STATS_OUTPUT)."
+        ),
+    )
+    args = parser.parse_args()
+    run(combine_countries=args.combine_countries)

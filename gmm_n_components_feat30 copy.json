@@ -1,0 +1,7 @@
+{
+    "BE+DE+ES+FR+GB+NL": {
+        "n_clusters": 5,
+        "best_init_setup": 0,
+        "covariance_type": "tied_diag"
+    }
+}

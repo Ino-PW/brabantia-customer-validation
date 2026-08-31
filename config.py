@@ -38,7 +38,7 @@ COVARIANCE = 'type'
 #   "30" - 12 curated + the 18 seasonal/campaign TOTAL_* columns
 #   "32" - 12 curated + the 18 seasonal columns + the 2 annual totals
 FEATURE_SET = os.environ.get("FEATURE_SET", "12")  # "12" / "30" / "32"
-_VALID_FEATURE_SETS = {"12", "30", "32"}
+_VALID_FEATURE_SETS = {"12"}#, "30", "32"}
 if FEATURE_SET not in _VALID_FEATURE_SETS:
     raise ValueError(f"Unknown FEATURE_SET={FEATURE_SET!r}; expected one of {sorted(_VALID_FEATURE_SETS)}.")
 FEATURE_TAG = f"feat{FEATURE_SET}"  # used to tag output filenames per run
@@ -59,7 +59,7 @@ LANDEN = ["NL", "BE", "FR", "DE", "GB", "ES"]
 # before you've run 007 with this feature-set naming).
 GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_{'+'.join(LANDEN)}.json"
 if not GMM_CONFIG_PATH.exists():
-    GMM_CONFIG_PATH = BASE_DIR / "gmm_n_components.json"
+    GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}.json"
 
 # Load the GMM configuration (n_clusters, best_init_setup, covariance_type)
 try:
@@ -187,8 +187,8 @@ def get_covariance_type(country: str) -> str:
     return GMM_COVARIANCE_TYPE.get(country, "full")
 
 
-GMM_PER_COUNTRY_TEMPLATE = str(RESULTS_DIR / "consumers_{FEATURE_SET}_{now}_{country}.csv")
-GMM_COMBINED_OUTPUT = RESULTS_DIR / "consumers_met_segmenten_per_land_{FEATURE_SET}_{now}.csv"
+GMM_PER_COUNTRY_TEMPLATE = str(RESULTS_DIR / ("clusters_" + FEATURE_SET + "_" + now + "_{country}.csv"))
+GMM_COMBINED_OUTPUT = str(RESULTS_DIR / ("clusters_" + FEATURE_SET + "_" + now + ".csv"))
 
 # --------------------------------------------------------------------------
 # 010 - PCA stage
@@ -197,11 +197,11 @@ GMM_COMBINED_OUTPUT = RESULTS_DIR / "consumers_met_segmenten_per_land_{FEATURE_S
 PCA_TOP_N_FEATURES = 10
 PCA_VARIANCE_TARGET = 1 #0.90  # used to report "components needed for 90% variance"
 
-PCA_OUTPUT_CSV = RESULTS_DIR / "consumers_met_pca_{FEATURE_SET}_{now}.csv"
-PCA_OUTPUT_TXT = RESULTS_DIR / f"PCA_{FEATURE_SET}_{now}.txt"
+PCA_OUTPUT_CSV = (RESULTS_DIR / ("consumers_met_pca_" + FEATURE_SET + "_" + now + ".csv"))
+PCA_OUTPUT_TXT = (RESULTS_DIR / ("PCA_" + FEATURE_SET + "_" + now + ".txt"))
 
 # --------------------------------------------------------------------------
 # 020 - Stats stage
 # --------------------------------------------------------------------------
-STATS_OUTPUT = RESULTS_DIR / f"stats_{FEATURE_SET}_{now}.csv"
+STATS_OUTPUT = str(RESULTS_DIR / ("stats_" + FEATURE_SET + "_" + now + ".csv"))
 SEGMENT_COL = "segment"
