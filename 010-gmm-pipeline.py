@@ -57,6 +57,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from tgmm import GaussianMixture
 
+import os
 import config
 from data_loading import load_and_clean, prepare_features
 from logging_utils import get_logger
@@ -205,7 +206,7 @@ def fit_gmm_for_country(df_country: pd.DataFrame, n_components: int, covariance_
 
 
 def run(landen: list[str] | None = None, exclude_terms: list[str] | None = None,
-        combine_countries: bool = False) -> dict[str, pd.DataFrame]:
+        combine_countries: bool = False, recluster: bool = False, recluster_path: str | None = None) -> dict[str, pd.DataFrame]:
     """
     Parameters
     ----------
@@ -237,7 +238,25 @@ def run(landen: list[str] | None = None, exclude_terms: list[str] | None = None,
     landen = landen if landen is not None else config.LANDEN
     exclude_terms = exclude_terms if exclude_terms is not None else config.EXCLUDE_TERMS
 
-    df = load_and_clean(config.GMM_INPUT_PATH)
+    
+    country_specific_recluster = {}
+    if recluster and recluster_path is not None:
+        log.info("Reclustering on the majority cluster from %s", recluster_path)
+        file_name = recluster_path.split('/')[-1]
+        stats_path = config.RESULTS_DIR / file_name.replace("cluster", "stats")
+        stats_df = pd.read_csv(stats_path)
+        for land in landen:
+            land_stats = stats_df[land].sort_values(by='n_points', ascending=False)
+            majority_cluster = land_stats.iloc[0]["segment"]
+            country_specific_recluster[land] = majority_cluster
+            log.info("Country: %s, Majority Cluster: %s", land, majority_cluster)
+
+        df = load_and_clean(recluster_path, country_specific_recluster)
+        
+    else:
+        log.info("Loading and cleaning data from %s", config.GMM_INPUT_PATH)
+        df = load_and_clean(config.GMM_INPUT_PATH)
+
     log.info("Data loaded: %d rows, %d columns.", len(df), len(df.columns))
 
     # Each "group" is (label_used_for_config_lookup_and_reporting, countries_in_it).
@@ -299,8 +318,12 @@ def run(landen: list[str] | None = None, exclude_terms: list[str] | None = None,
     # "segment" is only unique WITHIN a country; add a globally unique id.
     df_total["segment_globaal"] = df_total[config.COUNTRY_COL] + "_" + df_total["segment"].astype(str)
 
-    df_total.to_csv(config.GMM_COMBINED_OUTPUT, index=False)
-    log.info("Saved combined output to %s (%d rows).", config.GMM_COMBINED_OUTPUT, len(df_total))
+    if recluster and recluster_path is not None:
+        df_total.to_csv(config.RECLUSTER_CLUSTERING_OUTPUT, index=False)
+        log.info("Saved reclustered output to %s (%d rows).", config.RECLUSTER_CLUSTERING_OUTPUT, len(df_total))
+    else:
+        df_total.to_csv(config.GMM_COMBINED_OUTPUT, index=False)
+        log.info("Saved combined output to %s (%d rows).", config.GMM_COMBINED_OUTPUT, len(df_total))
 
     for country, df_result in dfs_per_country.items():
         log.info("--- %s (%d rows total) ---\n%s", country, len(df_result), df_result["segment"].value_counts())

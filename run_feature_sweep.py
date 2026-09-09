@@ -48,7 +48,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-FEATURE_SETS = ["12", "30", "32"]
+FEATURE_SETS = [#"12",
+                #"30", 
+                 "32"]
 
 
 def _parse_args() -> argparse.Namespace:
@@ -61,6 +63,17 @@ def _parse_args() -> argparse.Namespace:
             "all countries in config.LANDEN into a single cluster-count sweep "
             "instead of running one sweep per country."
         ),
+    )
+    parser.add_argument(
+        "--recluster", 
+        action="store_true",
+        help=("Do new clustering on the majority cluster. "
+              "This functionality only works after previous clustering has been done. "
+              "It will create a new cluster_selection csv file with the reclustered results."),
+    )
+    parser.add_argument(
+        "--recluster-path", type=str, default=None,
+        help=("Path to the CSV file containing the results that have to be reclustered.")
     )
     return parser.parse_args()
 
@@ -80,6 +93,8 @@ def main() -> None:
         cmd = [sys.executable, "run_cluster_selection.py"]
         if args.combine_countries:
             cmd.append("--combine-countries")
+            cmd.append("--recluster" if args.recluster else "")
+            cmd.append(f"--recluster-path={args.recluster_path}" if args.recluster_path else "")
 
         result = subprocess.run(
             cmd,

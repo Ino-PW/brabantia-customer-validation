@@ -21,12 +21,20 @@ from logging_utils import get_logger
 log = get_logger("data-loading")
 
 
-def load_and_clean(input_path: Path) -> pd.DataFrame:
+def load_and_clean(input_path: Path, country_specific_recluster: dict[str, int] = None) -> pd.DataFrame:
     """Load the raw input file and handle known data-quality issues."""
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     df = pd.read_csv(input_path)
+
+    if country_specific_recluster != {} and country_specific_recluster is not None:
+        df_copy = df.copy()
+        log.info("Reclustering with country-specific cluster counts: %s", country_specific_recluster)
+
+        mask = df['prd_country'].map(country_specific_recluster) == df['segment']
+            
+        df = df_copy[mask]
 
     # KOOPKRACHT is loaded as a string in the source export; coerce to numeric.
     if "KOOPKRACHT" in df.columns:

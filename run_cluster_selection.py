@@ -64,8 +64,20 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Pool all countries in config.LANDEN into a single cluster-count "
             "sweep instead of running one sweep per country."
-        ),
+        ))
+    
+    parser.add_argument(
+        "--recluster", 
+        action="store_true",
+        help=("Do new clustering on the majority cluster. "
+              "This functionality only works after previous clustering has been done. "
+              "It will create a new cluster_selection csv file with the reclustered results."),
     )
+    parser.add_argument(
+        "--recluster-path", type=str, default=None,
+        help=("Path to the CSV file containing the results that have to be reclustered.")
+    )
+    
     return parser.parse_args()
 
 

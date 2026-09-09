@@ -61,6 +61,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import config
 
 ALL_FEATURE_SETS = ["12", "30", "32"]
 
@@ -84,6 +85,24 @@ def _parse_args() -> argparse.Namespace:
             "label - see run_cluster_selection.py --combine-countries."
         ),
     )
+
+    parser.add_argument(
+        "--recluster", 
+        action="store_true",
+        help=("Do new clustering on the majority cluster. "
+              "This functionality only works after previous clustering has been done. "
+              "It will create a new cluster_selection csv file with the reclustered results."),
+    )
+    parser.add_argument(
+        "--recluster-path", type=str, default=None,
+        help=("Path to the CSV file containing the results that have to be reclustered.")
+    )
+    parser.add_argument(
+        "--config-path", type=str, default=config.GMM_CONFIG_PATH,
+        help=("Path to the JSON file containing the GMM configuration. "
+              "This is used to specify the number of components for each country.")
+    )
+
     return parser.parse_args()
 
 
@@ -131,6 +150,7 @@ def _run_all_feature_sets(combine_countries: bool) -> None:
         cmd = [sys.executable, script_path, "--feature-set", feature_set]
         if combine_countries:
             cmd.append("--combine-countries")
+
         proc = subprocess.run(cmd, env=child_env)
         success = proc.returncode == 0
         results[feature_set] = success
@@ -155,7 +175,6 @@ if _RUN_MODE == "all":
 # ---------------------------------------------------------------------------
 import importlib.util  # noqa: E402
 
-import config  # noqa: E402
 from logging_utils import get_logger  # noqa: E402
 
 log = get_logger("run-pipeline")
@@ -186,18 +205,26 @@ def _load_stage(filename: str):
 
 
 def main() -> None:
+    if _args.recluster:
+            log.info("--recluster set: stage 005 will re-run cluster selection from scratch, ignoring any existing results.")
+                
+            child_env = os.environ.copy()
+            child_env["RECLUSTER"] = "1"
+            if _args.recluster_path:
+                log.info("--recluster-path set: stage 005 will save its reclustered results to %s", _args.recluster_path)
+    
     log.info("Starting production pipeline (FEATURE_SET=%s) for countries: %s",
               config.FEATURE_SET, LANDEN)
     log.info("Using GMM_N_COMPONENTS: %s (default for unlisted countries: %d)",
               config.GMM_N_COMPONENTS, config.GMM_N_COMPONENTS_DEFAULT)
     if _args.combine_countries:
         log.info("--combine-countries set: stage 010 will pool all countries into one shared GMM fit.")
-
+    
     gmm = _load_stage("010-gmm-pipeline.py")
     stats = _load_stage("020-stats-pipeline.py")
 
     log.info("=== Stage 1/2 (feat%s): GMM segmentation + PCA reporting ===", config.FEATURE_SET)
-    gmm.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS, combine_countries=_args.combine_countries)
+    gmm.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS, combine_countries=_args.combine_countries, recluster=_args.recluster, recluster_path=_args.recluster_path)
 
     log.info("=== Stage 2/2 (feat%s): Cluster statistics ===", config.FEATURE_SET)
     stats.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS, combine_countries=_args.combine_countries)

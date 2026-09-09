@@ -99,7 +99,7 @@ def _evaluate_k(x_tensor, x_scaled, k: int, covariance_type) -> dict:
     return result
 
 
-def run(landen: list[str], covariance: list[str], combine_countries: bool = False) -> pd.DataFrame:
+def run(landen: list[str], covariance: list[str], combine_countries: bool = False, recluster: bool = False, recluster_path: str = None) -> pd.DataFrame:
     """
     Parameters
     ----------
@@ -122,8 +122,25 @@ def run(landen: list[str], covariance: list[str], combine_countries: bool = Fals
           still inspect cluster composition by country afterwards.
     """
     landen = landen if landen is not None else config.LANDEN
+    
+    country_specific_recluster = {}
+    if recluster and recluster_path is not None:
+        log.info("Reclustering on the majority cluster from %s", recluster_path)
+        file_name = recluster_path.split('/')[-1]
+        stats_path = config.RESULTS_DIR / file_name.replace("cluster", "stats")
+        stats_df = pd.read_csv(stats_path)
+        for land in landen:
+            land_stats = stats_df[land].sort_values(by='n_points', ascending=False)
+            majority_cluster = land_stats.iloc[0]["segment"]
+            country_specific_recluster[land] = majority_cluster
+            log.info("Country: %s, Majority Cluster: %s", land, majority_cluster)
 
-    df = load_and_clean(config.GMM_INPUT_PATH)
+        df = load_and_clean(recluster_path, country_specific_recluster)
+        
+    else:
+        log.info("Loading and cleaning data from %s", config.GMM_INPUT_PATH)
+        df = load_and_clean(config.GMM_INPUT_PATH)
+
     log.info("Data loaded: %d rows, %d columns.", len(df), len(df.columns))
 
     # Each "group" is (label_used_for_output_rows, list_of_country_codes_in_it).
@@ -239,24 +256,46 @@ def run(landen: list[str], covariance: list[str], combine_countries: bool = Fals
                 except Exception as e:
                     log.warning(f"{group_label} in cluster {k} with covariance type {covariance_type} led to {e}") 
 
-    results_df = pd.DataFrame(all_rows)
-    results_df.to_csv(config.CLUSTER_SELECTION_OUTPUT, index=False)
-    log.info("Saved %s", config.CLUSTER_SELECTION_OUTPUT)
+    if recluster and recluster_path is not None:
+        log.info("Reclustering cluster selection completed. Saving results to %s", config.RECLUSTER_CLUSTER_SELECTION_OUTPUT)
+        results_df = pd.DataFrame(all_rows)
+        results_df.to_csv(config.RECLUSTER_CLUSTER_SELECTION_OUTPUT, index=False)
+        log.info("Saved %s", config.RECLUSTER_CLUSTER_SELECTION_OUTPUT)
 
-    if all_pca_scores:
-        pca_scores_df = pd.concat(all_pca_scores)
-        pca_scores_df.to_csv(config.PCA_SCORES_OUTPUT, index=True)
-        log.info("Saved %s", config.PCA_SCORES_OUTPUT)
+        if all_pca_scores:
+            pca_scores_df = pd.concat(all_pca_scores)
+            pca_scores_df.to_csv(config.RECLUSTER_PCA_SCORES_OUTPUT, index=True)
+            log.info("Saved %s", config.RECLUSTER_PCA_SCORES_OUTPUT)
 
-    if all_pca_loadings:
-        pca_loadings_df = pd.concat(all_pca_loadings, ignore_index=True)
-        pca_loadings_df.to_csv(config.PCA_LOADINGS_OUTPUT, index=False)
-        log.info(
-            "Saved %s - inspect this to see which original features "
-            "barely contribute to any retained component (drop candidates).",
-            config.PCA_LOADINGS_OUTPUT,
-        )
-    _log_recommendations(results_df)
+        if all_pca_loadings:
+            pca_loadings_df = pd.concat(all_pca_loadings, ignore_index=True)
+            pca_loadings_df.to_csv(config.RECLUSTER_PCA_LOADINGS_OUTPUT, index=False)
+            log.info(
+                "Saved %s - inspect this to see which original features "
+                "barely contribute to any retained component (drop candidates).",
+                config.RECLUSTER_PCA_LOADINGS_OUTPUT,
+            )
+        _log_recommendations(results_df)
+
+    else:    
+        results_df = pd.DataFrame(all_rows)
+        results_df.to_csv(config.CLUSTER_SELECTION_OUTPUT, index=False)
+        log.info("Saved %s", config.CLUSTER_SELECTION_OUTPUT)
+
+        if all_pca_scores:
+            pca_scores_df = pd.concat(all_pca_scores)
+            pca_scores_df.to_csv(config.PCA_SCORES_OUTPUT, index=True)
+            log.info("Saved %s", config.PCA_SCORES_OUTPUT)
+
+        if all_pca_loadings:
+            pca_loadings_df = pd.concat(all_pca_loadings, ignore_index=True)
+            pca_loadings_df.to_csv(config.PCA_LOADINGS_OUTPUT, index=False)
+            log.info(
+                "Saved %s - inspect this to see which original features "
+                "barely contribute to any retained component (drop candidates).",
+                config.PCA_LOADINGS_OUTPUT,
+            )
+        _log_recommendations(results_df)
 
     return results_df
 
@@ -297,6 +336,17 @@ if __name__ == "__main__":
             "instead of running one sweep per country."
         ),
     )
+    parser.add_argument(
+        "--recluster", 
+        action="store_true",
+        help=("Do new clustering on the majority cluster. "
+              "This functionality only works after previous clustering has been done. "
+              "It will create a new cluster_selection csv file with the reclustered results."),
+    )
+    parser.add_argument(
+        "--recluster-path", type=str, default=None,
+        help=("Path to the CSV file containing the results that have to be reclustered.")
+    )
     args = parser.parse_args()
 
-    run(config.LANDEN, config.COVARIANCE_TYPE, combine_countries=args.combine_countries)
+    run(config.LANDEN, config.COVARIANCE_TYPE, combine_countries=args.combine_countries, recluster=args.recluster, recluster_path=args.recluster_path)

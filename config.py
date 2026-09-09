@@ -38,7 +38,8 @@ COVARIANCE = 'type'
 #   "30" - 12 curated + the 18 seasonal/campaign TOTAL_* columns
 #   "32" - 12 curated + the 18 seasonal columns + the 2 annual totals
 FEATURE_SET = os.environ.get("FEATURE_SET", "12")  # "12" / "30" / "32"
-_VALID_FEATURE_SETS = {"12"}#, "30", "32"}
+RECLUSTER = os.environ.get("RECLUSTER", "0") == "1"
+_VALID_FEATURE_SETS = {"12", "30", "32"}
 if FEATURE_SET not in _VALID_FEATURE_SETS:
     raise ValueError(f"Unknown FEATURE_SET={FEATURE_SET!r}; expected one of {sorted(_VALID_FEATURE_SETS)}.")
 FEATURE_TAG = f"feat{FEATURE_SET}"  # used to tag output filenames per run
@@ -57,9 +58,12 @@ LANDEN = ["NL", "BE", "FR", "DE", "GB", "ES"]
 # the config that matches its own FEATURE_SET. Falls back to the legacy
 # untagged gmm_n_components.json if a tagged file doesn't exist yet (e.g.
 # before you've run 007 with this feature-set naming).
-GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_{'+'.join(LANDEN)}.json"
-if not GMM_CONFIG_PATH.exists():
-    GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}.json"
+# if RECLUSTER is True:
+GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_herclustering.json"
+# else:
+    # # GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_{'+'.join(LANDEN)}.json"
+    # if not GMM_CONFIG_PATH.exists():
+    #     GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}.json"
 
 # Load the GMM configuration (n_clusters, best_init_setup, covariance_type)
 try:
@@ -100,8 +104,8 @@ EXCLUDE_TERMS = ["segment"]
 GMM_ID_COLS = [ID_COL]
 GMM_EXTRA_EXCLUDE_COLS_BASE = ["order_number_functional_all","TOTAL_2024","TOTAL_2025",'TOTAL_OUTLET_JAN_2024', 'TOTAL_DROOG_MOLEN_2024', 'TOTAL_STEAM_WIN', 'TOTAL_DESIGN',
                            'TOTAL_OUTLET_JUL_2024', 'TOTAL_BACK_TO_SCHOOL', 'TOTAL_BINLINER', 'TOTAL_OUTLET_JAN_2025', 'TOTAL_DROOG_MOLEN_2025', 'TOTAL_OUTLET_JUL_2025', 
-                           'TOTAL_MAKE_TAKE', 'TOTAL_NEWICON', 'TOTAL_PINK_STRIJKPLANK', 'TOTAL_POST_HOLIDAY', 'TOTAL_SPRING_SALES', 'TOTAL_BACK_TO_SCHOOL_SEASON', 'TOTAL_PRE_HOLIDAY', 'TOTAL_OFF_PEAK']  # dropped in addition to ID/country/categorical cols
-GMM_FEATURE_COLS = ['TOTAL_PRODUCTS_IN_ORDER', 'TOTAL_ORDERLINE_SALES', 'ORDER_NUMBER_FUNCTIONAL_COUNT', 'TOTAL_BATHROOM_TOILET', 'TOTAL_FOOD_ENJOYMENT', 'TOTAL_WASTE_MANAGEMENT', 'TOTAL_LAUNDRY_CARING', 'TOTAL_SERVICE', 'TOTAL_OTHERS','NET_SALES', 'KOOPKRACHT', 'GENDER_ENCODED']
+                           'TOTAL_MAKE_TAKE', 'TOTAL_NEWICON', 'TOTAL_PINK_STRIJKPLANK', 'TOTAL_POST_HOLIDAY', 'TOTAL_SPRING_SALES', 'TOTAL_BACK_TO_SCHOOL_SEASON', 'TOTAL_PRE_HOLIDAY', 'TOTAL_OFF_PEAK', 'TOTAL_SERVICE']  # dropped in addition to ID/country/categorical cols
+GMM_FEATURE_COLS = ['TOTAL_PRODUCTS_IN_ORDER', 'TOTAL_ORDERLINE_SALES', 'ORDER_NUMBER_FUNCTIONAL_COUNT', 'TOTAL_BATHROOM_TOILET', 'TOTAL_FOOD_ENJOYMENT', 'TOTAL_WASTE_MANAGEMENT', 'TOTAL_LAUNDRY_CARING', 'TOTAL_OTHERS','NET_SALES', 'KOOPKRACHT', 'GENDER_ENCODED']
 
 # Named variants of GMM_EXTRA_EXCLUDE_COLS, keyed by the FEATURE_SET
 # resolved above.
@@ -112,8 +116,8 @@ GMM_FEATURE_COLS = ['TOTAL_PRODUCTS_IN_ORDER', 'TOTAL_ORDERLINE_SALES', 'ORDER_N
 #          -> adds the 18 seasonal columns + the 2 annual totals back -> 32 features
 GMM_EXTRA_EXCLUDE_COLS_VARIANTS = {
     "12": GMM_EXTRA_EXCLUDE_COLS_BASE,
-    "30": ["order_number_functional_all", "TOTAL_2024", "TOTAL_2025"],
-    "32": ["order_number_functional_all"],
+    "30": ["order_number_functional_all","TOTAL_SERVICE", "TOTAL_2024", "TOTAL_2025"],
+    "32": ["order_number_functional_all","TOTAL_SERVICE"],
 }
 GMM_EXTRA_EXCLUDE_COLS = GMM_EXTRA_EXCLUDE_COLS_VARIANTS[FEATURE_SET]
 
@@ -134,6 +138,12 @@ CLUSTER_SELECTION_N_DAVIES_BOULDIN = "n_clusters"
 CLUSTER_SELECTION_DAVIES_BOULDIN = "davies_bouldin_score"
 CLUSTER_SELECTION_N_CALINKSI_HARABASZ ="n_clusters"
 CLUSTER_SELECTION_CALINKSI_HARABASZ = "calinski_harabasz_score"
+
+RECLUSTER_CLUSTER_SELECTION_OUTPUT = RESULTS_DIR / f"recluster/recluster_cluster_selection_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_CLUSTERING_OUTPUT = RESULTS_DIR / f"recluster/recluster_clustering_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_PCA_SCORES_OUTPUT = RESULTS_DIR / f"recluster/recluster_pca_scores_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_PCA_LOADINGS_OUTPUT = RESULTS_DIR / f"recluster/recluster_pca_loadings_{FEATURE_TAG}_{now}.csv"
+
 
 INIT_SETUP = "best_init_setup"
 
