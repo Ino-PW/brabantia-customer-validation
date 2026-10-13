@@ -1,4 +1,4 @@
-# Brabantia Customer Validation — consumentsegmentatie
+# Brabantia Customer Validation - consumentsegmentatie
 
 Dit project deelt Brabantia-webshopconsumenten per land in segmenten in. Dat gebeurt met een
 **Gaussian Mixture Model (GMM)** op PCA-gereduceerde aankoopkenmerken. Het project bestaat uit twee delen:
@@ -20,9 +20,9 @@ Landen in scope: **NL, BE, FR, DE, GB (VK), ES**.
 2. [Snelstart](#snelstart)
 3. [Vereisten](#vereisten)
 4. [Bestandsstructuur](#bestandsstructuur)
-5. [Deel 1 — SAS-voorbewerking](#deel-1--sas-voorbewerking)
+5. [Deel 1 - SAS-voorbewerking](#deel-1--sas-voorbewerking)
 6. [Inputdata voor de Python-pipeline](#inputdata-voor-de-python-pipeline)
-7. [Deel 2 — Python-pipeline](#deel-2--python-pipeline)
+7. [Deel 2 - Python-pipeline](#deel-2--python-pipeline)
 8. [Feature-sets (12 / 30 / 32)](#feature-sets-12--30--32)
 9. [Extra modi: `--combine-countries` en `--recluster`](#extra-modi---combine-countries-en---recluster)
 10. [Configuratie (`config.py`)](#configuratie-configpy)
@@ -70,13 +70,13 @@ flowchart TD
 1. **Voorbereiden.** Installeer de afhankelijkheden uit `requirements.txt` (zie
    [Vereisten](#vereisten)). Zet de export van de CAS-tabel `public.pwc_amount_of_orders` in
    `data/amount_of_orders_data.csv` en maak de outputmap `results/zonder_service/` aan.
-2. **Fase 1 — verkennen.** Draai `run_cluster_selection.py`. Dat voert achter elkaar `001` (sweep
+2. **Fase 1 - verkennen.** Draai `run_cluster_selection.py`. Dat voert achter elkaar `001` (sweep
    over k en covariantie-types per land), `002` (plots) en `003` (beste configuratie per land
    naar JSON) uit. Wil je meerdere feature-sets na elkaar verkennen, gebruik dan
    `run_feature_sweep.py`.
 3. **Controleren.** Bekijk de plots in `figures/` en de gegenereerde `gmm_n_components_feat<N>.json`.
    Pas de gekozen k per land zo nodig handmatig aan.
-4. **Fase 2 — productie.** Draai `run_pipeline.py` met de gewenste feature-set (`--feature-set 12`,
+4. **Fase 2 - productie.** Draai `run_pipeline.py` met de gewenste feature-set (`--feature-set 12`,
    `30` of `32`). Dat voert `010` (GMM + PCA-rapport) en `011` (clusterstatistieken) uit. Zonder
    `--feature-set` worden alle drie de feature-sets na elkaar gedraaid.
 5. **Rapporteren.** Maak met `visualise.py` een dashboardfiguur per land. Geef met `--input` het
@@ -156,7 +156,7 @@ brabantia-customer-validation/
 │   └── import-clusters.flw                     # Importeert de clusters voor visualisatie in het dashboard
 │
 └── data/
-    ├── amount_of_orders_data.csv               # Input Python-pipeline — NIET in git (zie .gitignore)
+    ├── amount_of_orders_data.csv               # Input Python-pipeline - NIET in git (zie .gitignore)
     └── regionale-statistieken/                 # Brondata voor de SAS-voorbewerking
         ├── pc2020_{BE,DE,ES,FR,NL,UK}_NUTS-2021_*.csv   # Eurostat postcode → NUTS3 (';'-gescheiden)
         ├── pc2018_uk_NUTS-2016_v3.0.csv                 # Oudere UK-koppeltabel (niet gebruikt in scripts)
@@ -178,7 +178,7 @@ laden de stappen via `importlib` op basis van hun bestandspad (`_load_stage()`).
 
 ---
 
-## Deel 1 — SAS-voorbewerking
+## Deel 1 - SAS-voorbewerking
 
 De SAS-scripts bouwen eerst een regionale referentietabel (postcode → NUTS3 → koopkracht).
 Daarna aggregeren ze orderdata tot consumentniveau.
@@ -200,15 +200,15 @@ Volgorde: `001 → 002 → 003 → 004 → 005`. `008` en `import-map` staan los
 
 Dit script maakt van orderregels de consumenttabel waarop het model draait (`GROUP BY master_person_key_md5`):
 
-- **Stap 1 — aggregatie (`pwc_aggregated`):** sommen van producten, orderline sales, het aantal orders
+- **Stap 1 - aggregatie (`pwc_aggregated`):** sommen van producten, orderline sales, het aantal orders
   (`order_number_functional_count`), omzet per productcategorie (`waste_management`, `bathroom_toilet`,
   `food_enjoyment`, `laundry_caring`, `service`, `other`), jaartotalen 2024/2025 en 18
   campagne- en seizoenskolommen. `net_sales` is het gemiddelde van `net_sales`; is dat 0 of leeg, dan
   wordt de som van `orderline_sales` gebruikt. `koopkracht` en `gender_encoded` zijn gemiddelden.
-- **Stap 2 — concatenatie (`pwc_concatenated`):** ordernummers, producten, attributen en
+- **Stap 2 - concatenatie (`pwc_concatenated`):** ordernummers, producten, attributen en
   categorieën per consument, `|`-gescheiden, plus `prd_country`.
-- **Stap 3 — join** van stap 1 en 2 → `public.pwc_amount_of_orders`.
-- **Stap 4 — adrestabel** `public.pwc_person_addresses` (geslacht, geboortedatum, postcode, NUTS3,
+- **Stap 3 - join** van stap 1 en 2 → `public.pwc_amount_of_orders`.
+- **Stap 4 - adrestabel** `public.pwc_person_addresses` (geslacht, geboortedatum, postcode, NUTS3,
   koopkracht, …), unieke rijen per consument.
 - **Stap 5/6:** promoveert de eindtabellen en ruimt tussentabellen op.
 - Aan het eind staan enkele verkennende queries (outliers met >100 producten of `net_sales > 10.000`)
@@ -246,7 +246,7 @@ SAS-referentietabellen staat `country_code = 'UK'`. `prd_country` in de brondata
 
 ---
 
-## Deel 2 — Python-pipeline
+## Deel 2 - Python-pipeline
 
 ### Gedeelde modules
 
@@ -263,7 +263,7 @@ SAS-referentietabellen staat `country_code = 'UK'`. `prd_country` in de brondata
 **`logging_utils.py`** geeft via `get_logger(naam)` een logger die naar stdout én naar
 `logs/run_<YYYYmmdd_HHMMSS>.log` schrijft (zie [Logging](#logging)).
 
-### Fase 1 — Hoeveel segmenten per land?
+### Fase 1 - Hoeveel segmenten per land?
 
 #### `001-cluster-selection-pipeline.py`
 
@@ -319,7 +319,7 @@ naar `gmm_n_components_feat<N>.json` (of `gmm_n_components_combined_feat<N>.json
 > Een iets lagere k met beter uitlegbare segmenten is voor de business vaak beter. Pas de JSON
 > desgewenst handmatig aan.
 
-### Fase 2 — Productie
+### Fase 2 - Productie
 
 #### `010-gmm-pipeline.py`
 
