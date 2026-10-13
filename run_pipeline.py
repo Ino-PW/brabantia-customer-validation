@@ -218,7 +218,7 @@ def main() -> None:
         log.info("--recluster-path set: stage  will save its reclustered results to %s", _args.recluster_path)
 
     gmm = _load_stage("010-gmm-pipeline.py")
-    stats = _load_stage("020-stats-pipeline.py")
+    stats = _load_stage("011-stats-pipeline.py")
 
     log.info("=== Stage 1/2 (feat%s): GMM segmentation + PCA reporting ===", config.FEATURE_SET)
     gmm.run(landen=LANDEN, exclude_terms=EXCLUDE_TERMS, combine_countries=_args.combine_countries, recluster=_args.recluster, recluster_path=_args.recluster_path)

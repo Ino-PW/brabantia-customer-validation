@@ -100,9 +100,9 @@ def main() -> None:
     if args.combine_countries:
         log.info("--combine-countries set: pooling all countries into a single sweep.")
 
-    cluster_selection = _load_stage("005-cluster-selection-pipeline.py")
-    visualise = _load_stage("006-visualise-cluster-selection-pipeline.py")
-    update_config = _load_stage("007-update-config-from-cluster-selection.py")
+    cluster_selection = _load_stage("001-cluster-selection-pipeline.py")
+    visualise = _load_stage("002-visualise-cluster-selection-pipeline.py")
+    update_config = _load_stage("003-update-config-from-cluster-selection.py")
 
     # log.info("=== Stage 1/3 (feat%s): Cluster count selection (k=%d..%d) ===",
     #          config.FEATURE_SET, config.CLUSTER_SELECTION_K_MIN, config.CLUSTER_SELECTION_K_MAX)
