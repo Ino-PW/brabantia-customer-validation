@@ -240,13 +240,13 @@ def run(landen: list[str] | None = None, exclude_terms: list[str] | None = None,
 
     
     country_specific_recluster = {}
-    if recluster and recluster_path is not None:
+    if recluster_path is not None:
         log.info("Reclustering on the majority cluster from %s", recluster_path)
         file_name = recluster_path.split('/')[-1]
-        stats_path = config.RESULTS_DIR / file_name.replace("cluster", "stats")
+        stats_path = config.RESULTS_DIR / file_name.replace("clusters", "stats")
         stats_df = pd.read_csv(stats_path)
         for land in landen:
-            land_stats = stats_df[land].sort_values(by='n_points', ascending=False)
+            land_stats = stats_df[stats_df['land'] == land].sort_values(by='n_points', ascending=False)
             majority_cluster = land_stats.iloc[0]["segment"]
             country_specific_recluster[land] = majority_cluster
             log.info("Country: %s, Majority Cluster: %s", land, majority_cluster)
@@ -363,6 +363,18 @@ if __name__ == "__main__":
             "- see 005-cluster-selection-pipeline.py --combine-countries."
         ),
     )
+    parser.add_argument(
+        "--recluster", 
+        action="store_true",
+        help=("Do new clustering on the majority cluster. "
+              "This functionality only works after previous clustering has been done. "
+              "It will create a new cluster_selection csv file with the reclustered results."),
+    )
+    parser.add_argument(
+        "--recluster_path", type=str, default=None,
+        help=("Path to the CSV file containing the results that have to be reclustered.")
+    )
+
     args = parser.parse_args()
 
-    run(combine_countries=args.combine_countries)
+    run(combine_countries=args.combine_countries, recluster=args.recluster, recluster_path=args.recluster_path)

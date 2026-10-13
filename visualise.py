@@ -53,10 +53,10 @@ def plot_country(sub: pd.DataFrame, land: str, output_dir: str) -> None:
     # 1. Customer size
     ax1 = fig.add_subplot(gs[0, 0])
     bars = ax1.bar(seg_labels, sub["n_points"], color=colors, width=0.6)
-    for bar, pct in zip(bars, sub["pct_of_total"]):
+    for bar, points in zip(bars, sub["n_points"]):
         ax1.text(bar.get_x() + bar.get_width() / 2,
                  bar.get_height() + sub["n_points"].max() * 0.01,
-                 f"{pct}%", ha="center", va="bottom", fontsize=8, color="#475569")
+                 f"{points}", ha="center", va="bottom", fontsize=8, color="#475569")
     ax1.set_title("Customers per segment", color="#475569", fontsize=10)
 
     # 2. Net sales vs orderline sales

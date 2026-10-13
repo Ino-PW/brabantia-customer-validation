@@ -16,7 +16,7 @@ import config
 # ..., run_pipeline, run_cluster_selection). Whichever entry point you run,
 # all of its log lines end up interleaved, in order, in a single readable
 # file - not scattered across one file per stage.
-LOG_DIR = config.RESULTS_DIR / "logs"
+LOG_DIR = config.BASE_DIR/ "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
 

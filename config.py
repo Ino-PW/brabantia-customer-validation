@@ -59,7 +59,7 @@ LANDEN = ["NL", "BE", "FR", "DE", "GB", "ES"]
 # untagged gmm_n_components.json if a tagged file doesn't exist yet (e.g.
 # before you've run 007 with this feature-set naming).
 # if RECLUSTER is True:
-GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_herclustering.json"
+GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_zonder_service.json"
 # else:
     # # GMM_CONFIG_PATH = BASE_DIR / f"gmm_n_components_{FEATURE_TAG}_{'+'.join(LANDEN)}.json"
     # if not GMM_CONFIG_PATH.exists():
@@ -126,7 +126,7 @@ GMM_EXTRA_EXCLUDE_COLS = GMM_EXTRA_EXCLUDE_COLS_VARIANTS[FEATURE_SET]
 # does not depend on 010 having run)
 # --------------------------------------------------------------------------
 now = datetime.now().strftime("%Y-%m-%d_%H-%M")
-CLUSTER_SELECTION_OUTPUT = RESULTS_DIR / f"cluster_selection_{FEATURE_TAG}_{now}.csv"
+CLUSTER_SELECTION_OUTPUT = RESULTS_DIR / f"zonder_service/cluster_selection_{FEATURE_TAG}_{now}.csv"
 CLUSTER_SELECTION_K_MIN = 3
 CLUSTER_SELECTION_K_MAX = 6
 CLUSTER_SELECTION_N_INIT = 5  # lower than production n_init=10: this runs K_MAX-K_MIN+1 times more fits
@@ -139,17 +139,17 @@ CLUSTER_SELECTION_DAVIES_BOULDIN = "davies_bouldin_score"
 CLUSTER_SELECTION_N_CALINKSI_HARABASZ ="n_clusters"
 CLUSTER_SELECTION_CALINKSI_HARABASZ = "calinski_harabasz_score"
 
-RECLUSTER_CLUSTER_SELECTION_OUTPUT = RESULTS_DIR / f"recluster/recluster_cluster_selection_{FEATURE_TAG}_{now}.csv"
-RECLUSTER_CLUSTERING_OUTPUT = RESULTS_DIR / f"recluster/recluster_clustering_{FEATURE_TAG}_{now}.csv"
-RECLUSTER_PCA_SCORES_OUTPUT = RESULTS_DIR / f"recluster/recluster_pca_scores_{FEATURE_TAG}_{now}.csv"
-RECLUSTER_PCA_LOADINGS_OUTPUT = RESULTS_DIR / f"recluster/recluster_pca_loadings_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_CLUSTER_SELECTION_OUTPUT = RESULTS_DIR / f"zonder_service/recluster/recluster_cluster_selection_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_CLUSTERING_OUTPUT = RESULTS_DIR / f"zonder_service/recluster/recluster_clustering_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_PCA_SCORES_OUTPUT = RESULTS_DIR / f"zonder_service/recluster/recluster_pca_scores_{FEATURE_TAG}_{now}.csv"
+RECLUSTER_PCA_LOADINGS_OUTPUT = RESULTS_DIR / f"zonder_service/recluster/recluster_pca_loadings_{FEATURE_TAG}_{now}.csv"
 
 
 INIT_SETUP = "best_init_setup"
 
 PCA_N_COMPONENTS = 12 # 0.90  # keep however many components are needed to explain 90% of variance
-PCA_SCORES_OUTPUT = RESULTS_DIR / f"pca_scores_{FEATURE_TAG}.csv"
-PCA_LOADINGS_OUTPUT = RESULTS_DIR / f"pca_loadings_{FEATURE_TAG}.csv"
+PCA_SCORES_OUTPUT = RESULTS_DIR / f"zonder_service/pca_scores_{FEATURE_TAG}.csv"
+PCA_LOADINGS_OUTPUT = RESULTS_DIR / f"zonder_service/pca_loadings_{FEATURE_TAG}.csv"
 
 # 006 (cluster-selection plot) reuses all of the CLUSTER_SELECTION_* constants
 # above - no separate config section needed.
@@ -197,8 +197,8 @@ def get_covariance_type(country: str) -> str:
     return GMM_COVARIANCE_TYPE.get(country, "full")
 
 
-GMM_PER_COUNTRY_TEMPLATE = str(RESULTS_DIR / ("clusters_" + FEATURE_SET + "_" + now + "_{country}.csv"))
-GMM_COMBINED_OUTPUT = str(RESULTS_DIR / ("clusters_" + FEATURE_SET + "_" + now + ".csv"))
+GMM_PER_COUNTRY_TEMPLATE = str(RESULTS_DIR / ("zonder_service/clusters_" + FEATURE_SET + "_" + now + "_{country}.csv"))
+GMM_COMBINED_OUTPUT = str(RESULTS_DIR / ("zonder_service/clusters_" + FEATURE_SET + "_" + now + ".csv"))
 
 # --------------------------------------------------------------------------
 # 010 - PCA stage
@@ -207,11 +207,11 @@ GMM_COMBINED_OUTPUT = str(RESULTS_DIR / ("clusters_" + FEATURE_SET + "_" + now +
 PCA_TOP_N_FEATURES = 10
 PCA_VARIANCE_TARGET = 1 #0.90  # used to report "components needed for 90% variance"
 
-PCA_OUTPUT_CSV = (RESULTS_DIR / ("consumers_met_pca_" + FEATURE_SET + "_" + now + ".csv"))
-PCA_OUTPUT_TXT = (RESULTS_DIR / ("PCA_" + FEATURE_SET + "_" + now + ".txt"))
+PCA_OUTPUT_CSV = (RESULTS_DIR / ("zonder_service/consumers_met_pca_" + FEATURE_SET + "_" + now + ".csv"))
+PCA_OUTPUT_TXT = (RESULTS_DIR / ("zonder_service/PCA_" + FEATURE_SET + "_" + now + ".txt"))
 
 # --------------------------------------------------------------------------
 # 020 - Stats stage
 # --------------------------------------------------------------------------
-STATS_OUTPUT = str(RESULTS_DIR / ("stats_" + FEATURE_SET + "_" + now + ".csv"))
+STATS_OUTPUT = str(RESULTS_DIR / ("zonder_service/stats_" + FEATURE_SET + "_" + now + ".csv"))
 SEGMENT_COL = "segment"

@@ -21,9 +21,10 @@ from logging_utils import get_logger
 log = get_logger("data-loading")
 
 
-def load_and_clean(input_path: Path, country_specific_recluster: dict[str, int] = None) -> pd.DataFrame:
+def load_and_clean(input_path: str | Path, country_specific_recluster: dict[str, int] = None) -> pd.DataFrame:
     """Load the raw input file and handle known data-quality issues."""
-    if not input_path.exists():
+
+    if type(input_path) is not str and not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
     df = pd.read_csv(input_path)
@@ -41,7 +42,7 @@ def load_and_clean(input_path: Path, country_specific_recluster: dict[str, int] 
         df["KOOPKRACHT"] = pd.to_numeric(df["KOOPKRACHT"].astype(str).str.strip(), errors="coerce")
 
     n_missing = int(df.isna().sum().sum())
-    if n_missing > 0:
+    if n_missing > 0 and country_specific_recluster is None:
         missing_distribution = df.isna().sum()
         numeric_cols_with_missing = df.select_dtypes(include="number").columns[
             df.select_dtypes(include="number").isna().any()
