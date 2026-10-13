@@ -12,6 +12,9 @@ Dit project deelt Brabantia-webshopconsumenten per land in segmenten in. Dat geb
 
 Landen in scope: **NL, BE, FR, DE, GB (VK), ES**.
 
+**Bijbehorend dashboard:** de resultaten van deze pipeline zijn interactief te bekijken
+in het [SAS Visual Analytics-dashboard](https://sasviya-brabantia.saasnow.com/SASVisualAnalytics/?reportUri=%2Freports%2Freports%2F27b0673a-9189-4083-93b7-f201ee52af85&sso_guest=true&sas-welcome=false).
+
 ---
 
 ## Inhoudsopgave
