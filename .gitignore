@@ -218,7 +218,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Prevent Data from being on Github
-data/
+amount_*
+clusters_12_*
+stats_12_*
 results/
 .archief/
 figures*/
