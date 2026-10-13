@@ -1,4 +1,4 @@
-# Brabantia Customer Validation - consumentsegmentatie
+# Brabantia Customer Validation — consumentsegmentatie
 
 Dit project deelt Brabantia-webshopconsumenten per land in segmenten in. Dat gebeurt met een
 **Gaussian Mixture Model (GMM)** op PCA-gereduceerde aankoopkenmerken. Het project bestaat uit twee delen:
@@ -20,9 +20,9 @@ Landen in scope: **NL, BE, FR, DE, GB (VK), ES**.
 2. [Snelstart](#snelstart)
 3. [Vereisten](#vereisten)
 4. [Bestandsstructuur](#bestandsstructuur)
-5. [Deel 1 - SAS-voorbewerking](#deel-1--sas-voorbewerking)
+5. [Deel 1 — SAS-voorbewerking](#deel-1--sas-voorbewerking)
 6. [Inputdata voor de Python-pipeline](#inputdata-voor-de-python-pipeline)
-7. [Deel 2 - Python-pipeline](#deel-2--python-pipeline)
+7. [Deel 2 — Python-pipeline](#deel-2--python-pipeline)
 8. [Feature-sets (12 / 30 / 32)](#feature-sets-12--30--32)
 9. [Extra modi: `--combine-countries` en `--recluster`](#extra-modi---combine-countries-en---recluster)
 10. [Configuratie (`config.py`)](#configuratie-configpy)
@@ -44,12 +44,16 @@ flowchart TD
         A4 --> A5[005 SAS-formats / labels]
         A6[008 Inwonersaantallen NUTS3]
         A7[import-map NUTS-kaart]
-        C0[(public.pwc_consument_data)] --> A8[020 Order → consument aggregatie]
+        B0[/Exports: consumentorders, adressen, personeelskorting/] --> A9[010 Inlezen, opschonen, NUTS3-koppeling]
+        A4 --> A9
+        A9 --> C0[(public.pwc_consument_data)]
+        A9 --> C3[(public.pwc_lekue_consumenten)]
+        C0 --> A8[020 Order → consument aggregatie]
         A8 --> C1[(public.pwc_amount_of_orders)]
         A8 --> C2[(public.pwc_person_addresses)]
     end
 
-    C1 -. export naar CSV .-> D[data/amount_of_orders_data.csv]
+    C1 -. flow: Export naar CSV .-> D[data/amount_of_orders_data.csv]
 
     subgraph PY["Python (repo-root)"]
         D --> P1[001 Cluster-selectie: k × covariantie-sweep]
@@ -61,26 +65,33 @@ flowchart TD
         P4 --> P5[011 Clusterstatistieken]
         P5 --> P6[visualise.py / run_segment_pipeline.py]
     end
+
+    P4 -. clusters-CSV .-> F1[flow import-clusters]
+    C1 --> F1
+    F1 --> C4[(public.PWC_CLUSTERS)]
 ```
 
 ---
 
 ## Snelstart
 
-1. **Voorbereiden.** Installeer de afhankelijkheden uit `requirements.txt` (zie
-   [Vereisten](#vereisten)). Zet de export van de CAS-tabel `public.pwc_amount_of_orders` in
-   `data/amount_of_orders_data.csv` en maak de outputmap `results/zonder_service/` aan.
-2. **Fase 1 - verkennen.** Draai `run_cluster_selection.py`. Dat voert achter elkaar `001` (sweep
+1. **Voorbereiden.** Draai in SAS Studio de flow `run-full-pipeline.flw` (en eenmalig
+   `stat-import-flw.flw`, zie [SAS Studio flows](#sas-studio-flows)). Zet de export
+   `amount_of_orders_data.csv` in `data/`. Installeer de afhankelijkheden uit `requirements.txt` (zie
+   [Vereisten](#vereisten)) en maak de outputmap `results/zonder_service/` aan.
+2. **Fase 1 — verkennen.** Draai `run_cluster_selection.py`. Dat voert achter elkaar `001` (sweep
    over k en covariantie-types per land), `002` (plots) en `003` (beste configuratie per land
    naar JSON) uit. Wil je meerdere feature-sets na elkaar verkennen, gebruik dan
    `run_feature_sweep.py`.
 3. **Controleren.** Bekijk de plots in `figures/` en de gegenereerde `gmm_n_components_feat<N>.json`.
    Pas de gekozen k per land zo nodig handmatig aan.
-4. **Fase 2 - productie.** Draai `run_pipeline.py` met de gewenste feature-set (`--feature-set 12`,
+4. **Fase 2 — productie.** Draai `run_pipeline.py` met de gewenste feature-set (`--feature-set 12`,
    `30` of `32`). Dat voert `010` (GMM + PCA-rapport) en `011` (clusterstatistieken) uit. Zonder
    `--feature-set` worden alle drie de feature-sets na elkaar gedraaid.
 5. **Rapporteren.** Maak met `visualise.py` een dashboardfiguur per land. Geef met `--input` het
    stats-bestand uit `results/zonder_service/` op.
+6. **Terug naar SAS.** Zet de clusters-CSV op de server en draai `import-clusters.flw`. Dan staan de
+   segmenten in `public.PWC_CLUSTERS`.
 
 ---
 
@@ -113,8 +124,9 @@ flowchart TD
 ### SAS
 
 - SAS Viya met een actieve **CAS-sessie** en schrijfrechten op caslib `public`.
-- Toegang tot `/sasdata/groups/PWC_Intern_SSBI/data/` (scripts 001–005) en
+- Toegang tot `/sasdata/groups/PWC_Intern_SSBI/data/` (scripts 001–005 en 010) en
   `/sasdata/pwc/data/` (script 008 en `import-map.sas`).
+- Caslib `autoload` met de tabel `dim_date` (fiscale kalender), gebruikt door `010`.
 - Libref `STAT` → `/sasdata/groups/PWC_Intern_SSBI/data/STAT`, formatlibrary
   `pwcfmt` → `/sasdata/groups/PWC_Intern_SSBI/data/format_library`.
 
@@ -148,15 +160,16 @@ brabantia-customer-validation/
 │   ├── 004-Toevoegen-UK-Inkomen.sas            # GDHI per hoofd 2023 (ITL3 → NUTS3) voor het VK
 │   ├── 005-Toevoegen-Labels.sas                # SAS-formats nuts3_fmt + country_fmt, gepromoot naar CAS
 │   ├── 008-inwoners-aantallen.sas              # Inwonersaantallen per NUTS3 → public.pwc_inwoners_aantallen
-│   ├── 010-import_naar_cas.sas                 # Inhoudelijk identiek aan 004
+│   ├── 010-import_naar_cas.sas                 # Orders + adressen inlezen, opschonen, NUTS3/koopkracht koppelen → CAS
 │   ├── 020-order-naar-consument-aggregatie.sas # Orderregels → één rij per consument
 │   ├── import-map.sas                          # NUTS-kaartgeometrie → public.PWC_MAP_NUTS
-│   ├── stat-import-flw.flw                     # Roept alle STAT verwerking aan
-│   ├── run-full-pipeline.flw                   # Roept 010 en 020 aan.
-│   └── import-clusters.flw                     # Importeert de clusters voor visualisatie in het dashboard
+│   ├── stat-import-flw.flw                     # Flow: 001 → 002 → 003 → 004 → 005 → 008 (referentietabellen)
+│   ├── run-full-pipeline.flw                   # Flow: 010 → 020, daarna export naar amount_of_orders_data.csv
+│   ├── import-clusters.flw                     # Flow: Python-clusters terug naar CAS → public.PWC_CLUSTERS
+│   └── create-provider-from-import.flw         # SAS Studio flow (leeg in deze repo)
 │
 └── data/
-    ├── amount_of_orders_data.csv               # Input Python-pipeline - NIET in git (zie .gitignore)
+    ├── amount_of_orders_data.csv               # Input Python-pipeline — NIET in git (zie .gitignore)
     └── regionale-statistieken/                 # Brondata voor de SAS-voorbewerking
         ├── pc2020_{BE,DE,ES,FR,NL,UK}_NUTS-2021_*.csv   # Eurostat postcode → NUTS3 (';'-gescheiden)
         ├── pc2018_uk_NUTS-2016_v3.0.csv                 # Oudere UK-koppeltabel (niet gebruikt in scripts)
@@ -178,7 +191,7 @@ laden de stappen via `importlib` op basis van hun bestandspad (`_load_stage()`).
 
 ---
 
-## Deel 1 - SAS-voorbewerking
+## Deel 1 — SAS-voorbewerking
 
 De SAS-scripts bouwen eerst een regionale referentietabel (postcode → NUTS3 → koopkracht).
 Daarna aggregeren ze orderdata tot consumentniveau.
@@ -192,38 +205,97 @@ Daarna aggregeren ze orderdata tot consumentniveau.
 | `005-Toevoegen-Labels.sas` | `STAT.NUTS_ZIP_NAME` | formatlibrary `pwcfmt` (CAS, global) | Maakt format `$nuts3_fmt.` (NUTS3-code → regionaam) en `$country_fmt.` (landcode → Nederlandse landnaam) en promoot de library naar CAS. |
 | `008-inwoners-aantallen.sas` | `inwoners-aantallen-nuts3-*.xlsx` | `public.pwc_inwoners_aantallen` | Bevolking per NUTS3 (totaal, <15, 15–64, 65+). Voor EU-regio's zonder 2024-cijfer wordt 2021 gebruikt. |
 | `import-map.sas` | `/sasdata/pwc/data/map/table_MAP_EU_NUTS.csv` | `public.PWC_MAP_NUTS` | Kaartgeometrie voor visualisaties in SAS Visual Analytics. |
+| `010-import_naar_cas.sas` | Exports van consumentorders, adressen en personeelskorting (CSV), `STAT.NUTS_ZIP_NAME`, `autoload.dim_date` | `public.pwc_consument_data`, `public.pwc_lekue_consumenten` | Zie hieronder. |
 | `020-order-naar-consument-aggregatie.sas` | `public.pwc_consument_data` | `public.pwc_amount_of_orders`, `public.pwc_person_addresses` | Zie hieronder. |
 
-Volgorde: `001 → 002 → 003 → 004 → 005`. `008` en `import-map` staan los daarvan, en `020` draait als `pwc_consument_data` beschikbaar is.
+Volgorde: `001 → 002 → 003 → 004 → 005 → 010 → 020`. `010` heeft de koppeltabel `STAT.NUTS_ZIP_NAME` uit `001`–`004` nodig, en `020` bouwt verder op de output van `010`. `008` en `import-map` staan hier los van.
+
+### SAS Studio flows
+
+De scripts worden in SAS Studio uitgevoerd via drie flows (`.flw`). Die verwijzen naar de
+`.sas`-bestanden op de server in `/sasdata/groups/PWC_Intern_SSBI/programs/`, zodat een wijziging in
+een script vanzelf in de flow terechtkomt.
+
+| Flow | Stappen | Resultaat |
+|---|---|---|
+| `stat-import-flw.flw` | `001` → `002` → `003` → `004` → `005` → `008` (scripts uit `programs/STAT_import/`) | De referentietabellen: `STAT.NUTS_ZIP_NAME`, de formats in `pwcfmt` en `public.pwc_inwoners_aantallen` |
+| `run-full-pipeline.flw` | Swimlane 1: `010` → `020`. Swimlane 2: stap *Export* van `PUBLIC.PWC_AMOUNT_OF_ORDERS` | `public.pwc_consument_data`, `public.pwc_amount_of_orders` en het bestand `/sasdata/groups/PWC_Intern_SSBI/data/export/amount_of_orders_data.csv` (komma-gescheiden, met kolomkoppen, overschrijft het bestaande bestand) |
+| `import-clusters.flw` | *Import File* van de clusteroutput uit Python (`/sasdata/groups/PWC_Intern_SSBI/data/clusters/clusters_<N>_<datum>-zonder-service.csv`) → `CASUSER.PWC_clusters_info`, daarna een FedSQL-*Query* die deze tabel op `master_person_key_md5` koppelt aan `PUBLIC.PWC_AMOUNT_OF_ORDERS` | `public.PWC_CLUSTERS`: de consumenttabel met `segment`, `segment_<i>_kans` en `segment_globaal`, zodat de segmenten in SAS Visual Analytics te gebruiken zijn |
+
+De volledige keten is dus:
+
+1. `stat-import-flw.flw` — alleen nodig als de regionale brondata verandert.
+2. `run-full-pipeline.flw` — bij elke nieuwe export van orders en adressen.
+3. Kopieer `data/export/amount_of_orders_data.csv` naar `data/` in deze repo en draai de
+   Python-pipeline.
+4. Zet de gecombineerde clusters-CSV uit `results/zonder_service/` in
+   `/sasdata/groups/PWC_Intern_SSBI/data/clusters/`, pas zo nodig de bestandsnaam aan in de stap
+   *Import File* en draai `import-clusters.flw`.
+
+### `010-import_naar_cas.sas`
+
+Dit script leest de ruwe exports in en maakt daaruit de orderregeltabel `public.pwc_consument_data`, verrijkt met regio en koopkracht:
+
+- **Inlezen (stap 1–4):** de `;`-gescheiden exports van adressen (`20260520_adresses_export.csv`),
+  consumentorders (`20260513_consumer_export.csv`) en orders met personeelskorting
+  (`20260529_personeels_korting.csv`) uit `/sasdata/groups/PWC_Intern_SSBI/data/`. `order_number_functional`
+  wordt overal naar tekst omgezet, zodat de merges goed aansluiten. Bestaande versies van de
+  outputtabellen in CAS worden eerst verwijderd.
+- **Filteren:** orders met **personeelskorting** worden verwijderd. Per consument en ordernummer
+  blijft één regel over.
+- **Samenvoegen met adressen (stap 5):** op persoonssleutel, ordernummer en orderdatum. Bedragen
+  (`net_sales`, `orderline_sales`, kortingen) worden met `NLMNLEUR8.2` van Europese notatie naar
+  numeriek omgezet.
+- **Standaardiseren (stap 6):** postcode en land in hoofdletters, `GB` → `UK` (zodat het land aansluit
+  op de NUTS-tabel) en geslacht `F` → `V`.
+- **NUTS3-koppeling (stap 7):** join op postcode + land met `STAT.NUTS_ZIP_NAME`, die `NUTS3`,
+  `koopkracht` en `NUTS_Label` toevoegt. Postcodes zonder exacte match krijgen een
+  **gedeeltelijke match**: het script zoekt in hetzelfde land de langst overeenkomende prefix (7 t/m 4
+  tekens, bijvoorbeeld `1010AZ` → `1010A%`) en neemt de NUTS3-regio en koopkracht daarvan over.
+- **Fiscale kalender (stap 8–9):** de oorspronkelijke kolommen `week` en `year` worden vervangen door
+  `week_fisc` en `year_fisc` uit `autoload.dim_date`, volgens de Brabantia-weeknummering.
+- **Afgeleide kolommen (stap 10):**
+  - per productcategorie het aantal keer dat die in `all_categories` voorkomt (`waste_management`,
+    `bathroom_toilet`, `food_enjoyment`, `laundry_caring`, `service`, `lekue`, `other`), plus
+    `_2024` en `_2025`;
+  - het land gaat terug naar `GB`, een leeg geslacht wordt `O`, en `gender_encoded` wordt M=1, V=2, O=3;
+  - `age` is de leeftijd op de orderdatum (0 als die onbekend is);
+  - een ontbrekend `total_orders` wordt 1, en een ontbrekende of nul `net_sales` wordt
+    `orderline_sales_after_discount`.
+- **Splitsen:** orders met een **Lékué**-product gaan naar `public.pwc_lekue_consumenten`. Orders
+  met meer dan 50 `total_orders` worden apart gezet en niet meegenomen. De rest gaat naar
+  `public.pwc_consument_data`.
+- **Campagne- en seizoensvlaggen:** per orderregel wordt op basis van fiscaal jaar en week
+  bepaald of die in een campagneperiode valt (bijv. `outlet_jan_2024` = week 1–4 van 2024,
+  `droog_molen_promo_2025` = week 10–28 van 2025) en in welk seizoen (`post_holiday`, `spring_sales`,
+  `back_to_school_season`, `pre_holiday`, `off_peak`). Script `020` telt deze vlaggen per consument
+  op tot de `TOTAL_*`-kolommen.
 
 ### `020-order-naar-consument-aggregatie.sas`
 
 Dit script maakt van orderregels de consumenttabel waarop het model draait (`GROUP BY master_person_key_md5`):
 
-- **Stap 1 - aggregatie (`pwc_aggregated`):** sommen van producten, orderline sales, het aantal orders
+- **Stap 1 — aggregatie (`pwc_aggregated`):** sommen van producten, orderline sales, het aantal orders
   (`order_number_functional_count`), omzet per productcategorie (`waste_management`, `bathroom_toilet`,
   `food_enjoyment`, `laundry_caring`, `service`, `other`), jaartotalen 2024/2025 en 18
   campagne- en seizoenskolommen. `net_sales` is het gemiddelde van `net_sales`; is dat 0 of leeg, dan
   wordt de som van `orderline_sales` gebruikt. `koopkracht` en `gender_encoded` zijn gemiddelden.
-- **Stap 2 - concatenatie (`pwc_concatenated`):** ordernummers, producten, attributen en
+- **Stap 2 — concatenatie (`pwc_concatenated`):** ordernummers, producten, attributen en
   categorieën per consument, `|`-gescheiden, plus `prd_country`.
-- **Stap 3 - join** van stap 1 en 2 → `public.pwc_amount_of_orders`.
-- **Stap 4 - adrestabel** `public.pwc_person_addresses` (geslacht, geboortedatum, postcode, NUTS3,
+- **Stap 3 — join** van stap 1 en 2 → `public.pwc_amount_of_orders`.
+- **Stap 4 — adrestabel** `public.pwc_person_addresses` (geslacht, geboortedatum, postcode, NUTS3,
   koopkracht, …), unieke rijen per consument.
 - **Stap 5/6:** promoveert de eindtabellen en ruimt tussentabellen op.
 - Aan het eind staan enkele verkennende queries (outliers met >100 producten of `net_sales > 10.000`)
   en een `proc freq`.
-
-> De tabel `public.pwc_consument_data` (orderregels verrijkt met NUTS3 en koopkracht) wordt **niet**
-> in deze repo aangemaakt. Waarschijnlijk gebeurt dat in een van de SAS Studio flows (`*.flw`),
-> maar die zijn in de repo leeg.
 
 ---
 
 ## Inputdata voor de Python-pipeline
 
 De Python-pipeline leest **`data/amount_of_orders_data.csv`** (`config.GMM_INPUT_PATH`). Dit is
-een CSV-export van `public.pwc_amount_of_orders`. Het bestand staat bewust niet in git
+een CSV-export van `public.pwc_amount_of_orders`, die de flow `run-full-pipeline.flw` wegschrijft naar
+`/sasdata/groups/PWC_Intern_SSBI/data/export/amount_of_orders_data.csv`. Het bestand staat bewust niet in git
 (`.gitignore`: `amount_*`), omdat het persoonsgebonden klantdata bevat.
 
 Verwachte kolommen (namen in hoofdletters, zoals in `config.py`):
@@ -241,12 +313,13 @@ Verwachte kolommen (namen in hoofdletters, zoals in `config.py`):
 | `GENDER_ENCODED` | numeriek | Gecodeerd geslacht |
 | `ORDER_NUMBER_FUNCTIONAL_ALL`, `ALL_*_ALL` | string | Concatenaties, worden als niet-numeriek automatisch genegeerd |
 
-**Let op de landcode:** de Python-pipeline gebruikt `GB` voor het Verenigd Koninkrijk. In de
-SAS-referentietabellen staat `country_code = 'UK'`. `prd_country` in de brondata moet dus `GB` zijn.
+**Landcode:** de Python-pipeline gebruikt `GB` voor het Verenigd Koninkrijk. In de
+SAS-referentietabellen staat `UK`. Script `010` zet `GB` tijdelijk om naar `UK` voor de NUTS-koppeling
+en daarna weer terug, zodat `prd_country` in de export `GB` is.
 
 ---
 
-## Deel 2 - Python-pipeline
+## Deel 2 — Python-pipeline
 
 ### Gedeelde modules
 
@@ -263,7 +336,7 @@ SAS-referentietabellen staat `country_code = 'UK'`. `prd_country` in de brondata
 **`logging_utils.py`** geeft via `get_logger(naam)` een logger die naar stdout én naar
 `logs/run_<YYYYmmdd_HHMMSS>.log` schrijft (zie [Logging](#logging)).
 
-### Fase 1 - Hoeveel segmenten per land?
+### Fase 1 — Hoeveel segmenten per land?
 
 #### `001-cluster-selection-pipeline.py`
 
@@ -319,7 +392,7 @@ naar `gmm_n_components_feat<N>.json` (of `gmm_n_components_combined_feat<N>.json
 > Een iets lagere k met beter uitlegbare segmenten is voor de business vaak beter. Pas de JSON
 > desgewenst handmatig aan.
 
-### Fase 2 - Productie
+### Fase 2 — Productie
 
 #### `010-gmm-pipeline.py`
 
